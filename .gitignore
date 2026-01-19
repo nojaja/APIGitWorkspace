@@ -137,3 +137,8 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+/.github
+/.apigit_workspace
+/test-results
+/test/e2e/github.config.json
+/test/e2e/gitlab.config.json

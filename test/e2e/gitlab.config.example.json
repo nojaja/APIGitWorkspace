@@ -1,0 +1,5 @@
+{
+  "projectId": "your-namespace%2Fyour-repo",
+  "token": "glpat_replace_with_your_token",
+  "host": "https://gitlab.com"
+}

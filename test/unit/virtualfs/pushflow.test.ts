@@ -1,0 +1,87 @@
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
+import fs from 'fs/promises'
+import path from 'path'
+import os from 'os'
+import VirtualFS from '../../../src/virtualfs/virtualfs'
+import { NodeFsStorage } from '../../../src/virtualfs/persistence'
+
+let tmpDir: string
+beforeEach(async () => {
+  jest.clearAllMocks()
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apigit-test-'))
+})
+afterEach(async () => {
+  try {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+  } catch (e) { void e }
+})
+
+describe('VirtualFS push flows', () => {
+  it('uses GitHub flow and updates index even if updateRef throws', async () => {
+    const storage = new NodeFsStorage(tmpDir)
+    const vfs = new VirtualFS({ backend: storage })
+    await vfs.init()
+
+    await vfs.writeWorkspace('a.txt', 'hello')
+    const changes = await vfs.getChangeSet()
+
+    const adapter = {
+      /**
+       *
+       */
+      createBlobs: async (chs: any[]) => {
+        const m: Record<string, string> = {}
+        for (const c of chs) {
+          if (c.type === 'create' || c.type === 'update') m[c.path] = 'blob-' + c.path
+        }
+        return m
+      },
+      /**
+       *
+       */
+      createTree: async (_changes: any[]) => 'treesha',
+      /**
+       *
+       */
+      createCommit: async (_message: string, _parent: string, _tree: string) => 'commit-github',
+      /**
+       *
+       */
+      updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
+    }
+
+    const res = await vfs.push({ parentSha: vfs.getIndex().head, message: 'm', changes }, adapter as any)
+    expect(res.commitSha).toBe('commit-github')
+    expect(vfs.getIndex().head).toBe('commit-github')
+
+    const blob = await storage.readBlob('a.txt')
+    expect(blob).toBe('hello')
+  })
+
+  it('uses actions flow when adapter has createCommitWithActions', async () => {
+    const storage = new NodeFsStorage(tmpDir)
+    const vfs = new VirtualFS({ backend: storage })
+    await vfs.init()
+
+    await vfs.writeWorkspace('b.txt', 'world')
+    const changes = await vfs.getChangeSet()
+
+    const adapter = {
+      /**
+       *
+       */
+      createCommitWithActions: async (_branch: string, _message: string, _changes: any[]) => 'commit-actions',
+      /**
+       *
+       */
+      updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
+    }
+
+    const res = await vfs.push({ parentSha: vfs.getIndex().head, message: 'm2', changes, ref: 'main' }, adapter as any)
+    expect(res.commitSha).toBe('commit-actions')
+    expect(vfs.getIndex().head).toBe('commit-actions')
+
+    const blob = await storage.readBlob('b.txt')
+    expect(blob).toBe('world')
+  })
+})

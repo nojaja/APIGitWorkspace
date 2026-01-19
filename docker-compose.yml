@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: 'gitlab.local'
+    restart: always
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8929'
+        gitlab_rails['omniauth_enabled'] = true
+        sidekiq['max_concurrency'] = 1
+        puma['worker_processes'] = 0
+        prometheus_monitoring['enable'] = false
+        logrotate['enable'] = false
+    ports:
+      - "8929:8929"
+      - "2289:22"
+    volumes:
+      - ./data/gitlab/etc:/etc/gitlab
+      - ./data/gitlab/log:/var/log/gitlab
+      - ./data/gitlab/opt:/var/opt/gitlab
+    shm_size: '256m'
+    privileged: true
+
+  setup:
+    image: node:18-alpine
+    depends_on:
+      - gitlab
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./test/e2e:/out
+      - ./data/gitlab/etc:/etc/gitlab:ro
+    environment:
+      GITLAB_URL: "http://gitlab:8929"
+      ROOT_PASSWORD: "password"
+      PROJECT_NAME: "test-repo"
+      OUTPUT_FILE: "/out/gitlab.config.json"
+    entrypoint: ["sh", "-c", "while [ ! -s /etc/gitlab/setup-token ]; do sleep 1; done; export PRIVATE_TOKEN=$(cat /etc/gitlab/setup-token); exec node /scripts/setup-gitlab.js"]
+
+  pat-generator:
+    image: docker:24-cli
+    depends_on:
+      - gitlab
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./:/workdir
+    working_dir: /workdir
+    restart: 'no'
+    entrypoint: ["sh", "-c", "apk add --no-cache curl >/dev/null 2>&1 || true; container=$(docker ps --filter 'ancestor=gitlab/gitlab-ce' --format '{{.Names}}' | head -n1); if [ -z \"$$container\" ]; then echo 'gitlab container not found'; exit 1; fi; echo found $$container; until docker exec \"$$container\" curl -sS -f http://localhost:8929/-/readiness >/dev/null 2>&1; do echo waiting for readiness; sleep 5; done; echo gitlab ready; token=$(docker exec \"$$container\" gitlab-rails runner \"require 'securerandom'; u = User.find_by_username('root'); raise 'root user not found' unless u; t = PersonalAccessToken.new(user: u, name: 'setup-token', scopes: [:api], expires_at: Date.today + 365); t.set_token(SecureRandom.hex(40)); t.save!; puts t.token\" 2>/dev/null); if [ -z \"$$token\" ]; then echo 'failed to create token'; exit 1; fi; echo $$token > ./data/gitlab/etc/setup-token; echo 'PAT written to ./data/gitlab/etc/setup-token'"]
