@@ -1,146 +1,145 @@
 # browser-git-ops
 
-**目的**: ブラウザネイティブ環境（OPFS + Github/Gitlab APIs）で動作する軽量な Git 操作ライブラリを提供します。VirtualFS によるローカル差分生成と、GitHub/GitLab 向けのアダプタを通じたリモート操作を抽象化します。
+軽量なブラウザ向け Git 操作用ライブラリ（VirtualFS + GitHub/GitLab アダプタ）。
+ブラウザの永続化レイヤは OPFS と IndexedDB を個別のバックエンド実装として提供し、VirtualFS が抽象化して利用します。
 
-**主な特徴**
-- **仮想ファイルシステム (VirtualFS)**: ローカルワークスペースとベーススナップショットを管理し、変更セット（create/update/delete）を生成します。
-- **Git アダプタ抽象**: `GitAdapter` インターフェースに準拠するアダプタで GitHub/GitLab API を操作できます（サンプル実装あり）。
-- **Idempotent push**: commitKey による冪等処理サポート。
-- **衝突検知とマージ補助**: リモート差分取り込み時にローカルの未コミット変更を検出して conflicts を報告します。
+---
 
-**注意（⚠️）**: 実装はユーティリティ/ライブラリ向けで、環境やアクセストークンの管理、エラーハンドリング方針は利用側で制御してください。
+**主要ポイント**
+- `VirtualFS`：ローカルワークスペースとベーススナップショットを管理し、create/update/delete の変更セットを生成します。
+- ストレージ分離：`OpfsStorage`（OPFS 対応）と `IndexedDbStorage`（IndexedDB 対応）を個別実装として提供。
+- `GitHubAdapter` / `GitLabAdapter`：各プラットフォーム向けのアダプタ実装（HTTP 再試行や blob/tree/commit フローを含む）。
 
-**プロジェクト構成（抜粋）**
-- **src/virtualfs/virtualfs.ts**: VirtualFS 本体（初期化、read/write、push/pull、差分生成） - [src/virtualfs/virtualfs.ts](src/virtualfs/virtualfs.ts)
-- **src/virtualfs/persistence.ts**: ストレージバックエンドの抽象と Node 用実装 - [src/virtualfs/persistence.ts](src/virtualfs/persistence.ts)
-- **src/git/adapter.ts**: `GitAdapter` インターフェース定義 - [src/git/adapter.ts](src/git/adapter.ts)
-- **src/git/githubAdapter.ts**: GitHub 用アダプタ（blob/tree/commit フロー、再試行ロジック） - [src/git/githubAdapter.ts](src/git/githubAdapter.ts)
-- **test/**: ユニット／E2E テスト群（Jest / Playwright） - [test](test)
+---
 
-**技術スタック**
-- TypeScript 5.x
-- Node.js (ESM, `type: "module"`)
-- テスト: Jest（unit） / Playwright（E2E）
-- ビルド: `tsc`
+**変更履歴（最近の重要な変更点）**
+- ブラウザ永続化を `BrowserStorage` から分離し、`OpfsStorage` と `IndexedDbStorage` を新規追加しました。
+- `VirtualFS` の既定バックエンドを `OpfsStorage` に切替え、従来の `canUseOpfs`（インスタンス委譲）は廃止しました。
+- ルートエクスポートに `IndexedDbStorage` / `OpfsStorage` を追加し、examples と E2E ヘルパーを OPFS 検出の新 API に合わせて更新しました。
+- 単体テストを複数更新・追加し、OPFS / IndexedDB の分岐やトランザクションエラー経路のカバレッジを強化しました。
 
---------------------------------------------------
-**クイックスタート（開発用）**
+---
 
-1. 依存インストール
+**公開 API（ライブラリエントリ）**
+ライブラリはバンドル／パッケージとして次をエクスポートします（`src/index.ts` を参照）：
 
-```bash
-npm ci
-```
+- `VirtualFS` (default exportと命名エクスポート)
+- `OpfsStorage` — OPFS（origin private file system）用バックエンド
+- `IndexedDbStorage` — IndexedDB 用バックエンド
+- `GitHubAdapter`, `GitLabAdapter` — 各プラットフォーム向けアダプタ
 
-2. ユニットテスト実行
-
-```bash
-npm run test
-```
-
-3. E2E テスト（Playwright）
-
-```bash
-npm run test:e2e
-```
-
-4. ビルド
-
-```bash
-npm run build
-```
-
---------------------------------------------------
-**ライブラリ利用ガイド（Library Usage）**
-
-下記はライブラリの代表的な使い方（TypeScript）です。詳しい実装は各ファイルを参照してください。
-
-例: `VirtualFS` を初期化してローカル編集を push する
+例：基本的な利用
 
 ```ts
-import VirtualFS from './src/virtualfs/virtualfs'
-import GitHubAdapter from './src/git/githubAdapter'
+import { VirtualFS, OpfsStorage, GitHubAdapter } from 'browser-git-ops'
 
 async function example() {
-  const vfs = new VirtualFS({ storageDir: '.apigit' })
+  const vfs = new VirtualFS({ backend: new OpfsStorage() })
   await vfs.init()
 
-  // ワークスペース編集
-  await vfs.writeWorkspace('foo.txt', 'hello')
-
-  // 変更セット取得
+  await vfs.writeWorkspace('README.md', 'hello world')
   const changes = await vfs.getChangeSet()
 
-  // GitHub アダプタを使って push
   const gh = new GitHubAdapter({ owner: 'ORG', repo: 'REPO', token: process.env.GH_TOKEN })
-  const res = await vfs.push({ parentSha: vfs.getIndex().head, message: 'update', changes }, gh as any)
-  console.log('commitSha', res.commitSha)
+  // push の呼び出しは VirtualFS の API に依存（詳細は src/virtualfs/virtualfs.ts）
 }
 ```
 
-API の概略（主要メソッド）
-- `new VirtualFS(options?)` - オプション: `{ storageDir?: string, backend?: StorageBackend }`
-- `init()` - バックエンド初期化と index 読み込み
-- `writeWorkspace(filepath, content)` - ワークスペースにファイルを書き込む
-- `deleteWorkspace(filepath)` - ワークスペース上のファイルを削除（トゥームストーン管理）
-- `renameWorkspace(from, to)` - rename（内部では delete + create）
-- `readWorkspace(filepath)` - ワークスペース/ベースから内容を読み出す
-- `applyBaseSnapshot(snapshot, headSha)` - リモートスナップショットを適用
-- `getIndex()` - 現在の index を返す
-- `listPaths()` - 登録パス一覧
-- `getChangeSet()` - create/update/delete の配列を生成
-- `pull(remoteHead, baseSnapshot)` - リモート差分取り込み（conflicts を返す）
-- `push(input, adapter?)` - 変更をコミットし（adapter があれば）リモートへ反映
+---
 
-GitAdapter インターフェース（`src/git/adapter.ts`）
-- `createBlobs(changes, concurrency?)` -> Promise<Record<string,string>>
-- `createTree(changes, baseTreeSha?)` -> Promise<string>
-- `createCommit(message, parentSha, treeSha)` -> Promise<string>
-- `updateRef(ref, commitSha, force?)` -> Promise<void>
+## プロジェクト構成（抜粋）
 
-実装済みアダプタの注意点:
-- `GitHubAdapter` は `blob/tree/commit` フローを実装し、HTTP 再試行ロジックを内蔵しています（5xx, 429 のリトライ等）。実装は [src/git/githubAdapter.ts](src/git/githubAdapter.ts) を参照してください。
-- GitLab 用実装はリポジトリ内に存在しますが、環境差異により API の振る舞いが異なるため本番運用前に検証してください。⚠️
+- `src/` - ソースコード
+  - `virtualfs/virtualfs.ts` - `VirtualFS` 本体
+  - `virtualfs/opfsStorage.ts` - OPFS バックエンド
+  - `virtualfs/indexedDbStorage.ts` - IndexedDB バックエンド
+  - `git/githubAdapter.ts` - GitHub 向けアダプタ
+  - `git/gitlabAdapter.ts` - GitLab 向けアダプタ
+- `examples/` - ブラウザ実行用のサンプル UI
+- `test/` - Jest（unit）および Playwright（e2e）テスト
 
---------------------------------------------------
-**開発セットアップ**
-- Node: 任意の recent Node.js（ESM サポート済み）
-- 実行手順
+（詳細はソース内のファイル参照を推奨）
+
+---
+
+## 技術スタック
+
+- TypeScript
+- ビルド: `esbuild`（ブラウザ向けバンドル） + `tsc`（型定義出力）
+- テスト: Jest（unit） / Playwright（e2e）
+
+---
+
+## 特記事項 / 現在のステータス
+
+- 実装済み
+  - `VirtualFS` のコア機能（差分生成・index 管理・ローカル編集）
+  - `OpfsStorage` と `IndexedDbStorage` の永続化 API
+  - `GitHubAdapter` の主要な push フロー
+- テスト
+  - unit テストは多数あり、OPFS/IndexedDB 分岐やトランザクションエラー経路をカバー
+  - E2E は Playwright ベースのサンプル UI を含む
+- 要検証 / ⚠️ 注意
+  - GitLab の API 実装は環境差異を考慮した追加検証が必要です。
+  - OPFS の利用可否はブラウザ実装に依存します（polyfill でテストは行っていますが、実ブラウザでの動作確認を推奨）。
+
+---
+
+## セットアップ（開発者向け）
+
+1. リポジトリをクローン
 
 ```bash
-git clone <repo>
+git clone https://github.com/nojaja/browser-git-ops.git
 cd APIGitWorkspace01
 npm ci
 ```
 
-- コマンド一覧
-  - `npm run test` : ユニットテスト（Jest）
-  - `npm run test:e2e` : Playwright E2E
-  - `npm run lint` : ESLint
-  - `npm run build` : TypeScript ビルド
+2. 開発コマンド
 
-テスト関連の注意:
-- Jest は ESM を扱うため `node --experimental-vm-modules` を使用するスクリプトが package.json に設定されています。
+```bash
+npm run test        # unit テスト (Jest)
+npm run test:e2e    # Playwright E2E
+npm run lint        # ESLint
+npm run build       # 型定義 + ブラウザバンドル出力 (dist/)
+```
 
---------------------------------------------------
-**現在のステータス**
-- 実装済み: `VirtualFS` のコア機能（差分生成、push/pull シミュレーション、index 管理）、`GitHubAdapter` の主要な API 呼び出し。
-- テスト: unit テストと一部の E2E テストが含まれています（`test/` 配下）。
-- 未確定/要検証: 外部サービス（GitLab）の細かい API 挙動、production 用のエラー・認可ポリシー。
+実行時のヒント: テストスクリプトは ESM を扱うため、package.json の `test` スクリプトは `node --experimental-vm-modules` を付与して起動します。
 
---------------------------------------------------
-**ライセンスとメタデータ**
-- package name: `browser-git-ops`
-- version: `0.0.0`
-- module type: CommonJS (`type: commonjs`)
-- License: MIT License
+---
 
---------------------------------------------------
-追加で欲しいもの
-- サンプルユースケースを示す小さなサンプルリポジトリまたは `examples/` ディレクトリ
+## ライブラリ利用ガイド（API 概略）
 
+- `new VirtualFS(options?)` — オプション: `{ storageDir?: string, backend?: StorageBackend }`。
+- `init()` — バックエンド初期化・index 読み込み。
+- `writeWorkspace(path, content)` / `deleteWorkspace(path)` / `renameWorkspace(from,to)` — ローカル編集操作。
+- `getChangeSet()` — create/update/delete の変更配列を取得。
+- `applyBaseSnapshot(snapshot, headSha)` — リモートスナップショット適用（conflicts を返す）。
 
---------------------------------------------------
-貢献・問い合わせ
-- PR/Issue を歓迎します。まず issue を立て、簡単な実装提案（変更点の概要）を添えてください。
+詳細は `src/virtualfs/virtualfs.ts` の JSDoc コメントを参照してください。
 
+---
+
+## テストと CI
+
+- ローカルでの unit テスト実行: `npm run test`
+- E2E 実行前に `npm run build` を実行する必要があります（`test:e2e` の `pretest:e2e` を参照）。
+
+---
+
+## 貢献
+
+- Issue / PR を歓迎します。まず Issue にて目的・設計方針を共有してください。
+- コーディング規約: TypeScript + ESLint。PR ではテスト追加を推奨します。
+
+---
+
+## ライセンス
+
+- MIT — 詳細は `LICENSE` ファイル参照
+
+---
+
+## 連絡先
+
+- 作者: nojaja — https://github.com/nojaja
