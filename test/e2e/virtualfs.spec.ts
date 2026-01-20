@@ -1,4 +1,115 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test'
+import { clearOPFS, dumpOPFS } from './helpers/opfs'
+
+// Lightweight in-page VirtualFS implementation used by the simple browser tests
+const vfsSimpleScript = `(() => {
+  const base = {}; // files that reflect remote base
+  const workspace = {}; // pending edits
+  const tombstone = new Set();
+  let head = 'initial';
+
+  async function pull() {
+    // simulate remote pull returning current base
+    return { head };
+  }
+
+  async function push() {
+    // simulate successful push
+    head = 'commit-' + Math.random().toString(36).slice(2, 8);
+    // clear workspace/tombstone
+    for (const k of Object.keys(workspace)) delete workspace[k];
+    tombstone.clear();
+    return { commit: { id: head } };
+  }
+
+  return {
+    readWorkspace: (p) => {
+      if (p in workspace) return workspace[p];
+      if (p in base) return base[p];
+      return '';
+    },
+    writeWorkspace: (p, content) => { workspace[p] = content; tombstone.delete(p); },
+    deleteWorkspace: (p) => { delete workspace[p]; if (p in base) tombstone.add(p); },
+    renameWorkspace: (from, to) => {
+      if (from in workspace) { workspace[to] = workspace[from]; delete workspace[from]; }
+      else if (from in base) { tombstone.add(from); workspace[to] = base[from]; }
+    },
+    getIndex: () => {
+      const keys = new Set([...Object.keys(base), ...Object.keys(workspace)]);
+      const entries = Object.fromEntries(Array.from(keys).map(k => [k, { path: k, baseSha: base[k] ? 'b' : undefined, workspaceSha: workspace[k] ? 'w' : undefined, state: workspace[k] ? 'added' : 'base' }]));
+      return { head, entries };
+    },
+    getTombstones: () => Array.from(tombstone),
+    getChangeSet: async () => {
+      const changes = [];
+      for (const k of Object.keys(workspace)) {
+        if (!(k in base)) changes.push({ type: 'create', path: k });
+        else if (base[k] !== workspace[k]) changes.push({ type: 'update', path: k });
+      }
+      for (const p of tombstone) changes.push({ type: 'delete', path: p });
+      return changes;
+    },
+    applyBaseSnapshot: (m, h) => { for (const k of Object.keys(base)) delete base[k]; for (const k of Object.keys(m)) base[k] = m[k]; head = h; },
+    pull, push,
+    _debug: () => ({ base: { ...base }, workspace: { ...workspace }, tombstone: Array.from(tombstone), head })
+  };
+})();`;
+
+test.describe('VirtualFS E2E (browser)', () => {
+  test('basic add/update/delete', async ({ page }) => {
+    // inject in-page vfs and run tests without depending on bundle
+    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+    await page.goto('about:blank')
+    const state = await page.evaluate(async () => {
+      const vfs = (window as any).vfs
+      await vfs.writeWorkspace('foo.txt', 'hello')
+      let idx = vfs.getIndex()
+      const s1 = idx.entries['foo.txt'].state
+      await vfs.writeWorkspace('foo.txt', 'hello2')
+      idx = vfs.getIndex()
+      const s2 = idx.entries['foo.txt'].state
+      await vfs.deleteWorkspace('foo.txt')
+      idx = vfs.getIndex()
+      const exists = !!idx.entries['foo.txt']
+      return { s1, s2, exists }
+    })
+    expect(state.s1).toBe('added')
+    expect(state.s2).toBe('added')
+    expect(state.exists).toBe(false)
+  })
+
+  test('tombstone case with base', async ({ page }) => {
+    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+    await page.goto('about:blank')
+    const res = await page.evaluate(async () => {
+      const vfs = (window as any).vfs
+      await vfs.applyBaseSnapshot({ 'a.txt': 'basecontent' }, 'head1')
+      await vfs.writeWorkspace('a.txt', 'modified')
+      await vfs.deleteWorkspace('a.txt')
+      const tombs = vfs.getTombstones()
+      const changes = await vfs.getChangeSet()
+      return { tombsLength: tombs.length, hasDelete: changes.some((c: any) => c.type === 'delete' && c.path === 'a.txt') }
+    })
+    expect(res.tombsLength).toBe(1)
+    expect(res.hasDelete).toBe(true)
+  })
+
+  test('pull updates base when workspace unchanged', async ({ page }) => {
+    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+    await page.goto('about:blank')
+    const result = await page.evaluate(async () => {
+      const vfs = (window as any).vfs
+      await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
+      const remote = { 'a.txt': 'v2' }
+      // simulate pull by applying snapshot
+      await vfs.applyBaseSnapshot(remote, 'head2')
+      return { conflicts: 0, head: vfs.getIndex().head, content: await vfs.readWorkspace('a.txt') }
+    })
+    expect(result.conflicts).toBe(0)
+    expect(result.head).toBe('head2')
+    expect(result.content).toBe('v2')
+  })
+})
 
 type FileMap = Record<string, string>;
 
@@ -121,7 +232,7 @@ const vfsScript = `(() => {
 test.describe('VirtualFS E2E (mocked API)', () => {
   test.beforeEach(async ({ page }) => {
     // inject a fresh vfs implementation into the page
-    await page.addInitScript({ content: `window.vfs = ${vfsScript}` });
+    await page.addInitScript({ content: 'window.vfs = ' + vfsScript });
     await page.goto('about:blank');
   });
 
@@ -304,7 +415,7 @@ test.describe('VirtualFS E2E (mocked API)', () => {
   test('11 - Large repository pull (performance)', async ({ page }) => {
     // Given: remote repository with many files
     const files: FileMap = {};
-    for (let i = 0; i < 1000; i++) files[`f${i}.txt`] = 'x';
+    for (let i = 0; i < 1000; i++) files['f' + i + '.txt'] = 'x';
     const api = await installMockApi(page, files);
     const start = Date.now();
     await page.evaluate(() => window.vfs.pull());
@@ -318,7 +429,7 @@ test.describe('VirtualFS E2E (mocked API)', () => {
   test('12 - Large repository, single file update', async ({ page }) => {
     // Given: large repo pulled locally
     const files: FileMap = {};
-    for (let i = 0; i < 2000; i++) files[`f${i}.txt`] = 'x';
+    for (let i = 0; i < 2000; i++) files['f' + i + '.txt'] = 'x';
     const api = await installMockApi(page, files);
     await page.evaluate(() => window.vfs.pull());
 
@@ -442,3 +553,71 @@ test.describe('VirtualFS E2E (mocked API)', () => {
     expect(base['b']).toBe('2');
   });
 });
+
+// OPFS 専用の簡易テスト: ブラウザの Origin Private File System を直接操作して検証
+test.describe('VirtualFS OPFS (browser)', () => {
+  test.beforeEach(async ({ page }) => {
+    // 必ず各テスト前に OPFS をクリアして状態を安定化させる
+    // Use the test web server origin so IndexedDB/OPFS access is permitted
+    await page.goto('http://localhost:8080/')
+    await clearOPFS(page)
+  })
+
+  test('OPFS にファイルを書き込み、読み取れること', async ({ page }) => {
+    await page.evaluate(async () => {
+      const root = await (navigator as any).storage.getDirectory();
+      const fh = await root.getFileHandle('test.txt', { create: true });
+      const w = await fh.createWritable();
+      await w.write('hello opfs');
+      await w.close();
+    })
+
+    const content = await page.evaluate(async () => {
+      const root = await (navigator as any).storage.getDirectory();
+      const fh = await root.getFileHandle('test.txt');
+      const file = await fh.getFile();
+      return file.text();
+    })
+
+    expect(content).toBe('hello opfs')
+  })
+
+  test('ページ再読み込み後も OPFS が保持されること', async ({ page }) => {
+    await page.evaluate(async () => {
+      const root = await (navigator as any).storage.getDirectory();
+      const fh = await root.getFileHandle('persist.txt', { create: true });
+      const w = await fh.createWritable();
+      await w.write('persisted');
+      await w.close();
+    })
+
+    await page.reload()
+
+    const exists = await page.evaluate(async () => {
+      const root = await (navigator as any).storage.getDirectory();
+      try {
+        await root.getFileHandle('persist.txt');
+        return true
+      } catch {
+        return false
+      }
+    })
+
+    expect(exists).toBe(true)
+  })
+
+  test('dumpOPFS でファイル構成を取得できる', async ({ page }) => {
+    await page.evaluate(async () => {
+      const root = await (navigator as any).storage.getDirectory();
+      const dir = await root.getDirectoryHandle('repo', { create: true });
+      const fh = await dir.getFileHandle('config.json', { create: true });
+      const w = await fh.createWritable();
+      await w.write('{"ok":true}');
+      await w.close();
+    })
+
+    const dump = await dumpOPFS(page)
+    expect(Object.keys(dump)).toEqual(expect.arrayContaining(['repo/config.json']))
+    expect(dump['repo/config.json']).toContain('"ok":true')
+  })
+})

@@ -1,5 +1,4 @@
-import fs from 'fs/promises'
-import path from 'path'
+// Node builtins (fs/path) are imported dynamically to avoid bundling them into browser builds
 import { IndexFile } from './types'
 
 /**
@@ -42,93 +41,6 @@ export interface StorageBackend {
    * @returns {Promise<void>}
    */
   deleteBlob(_filepath: string): Promise<void>
-}
-
-/**
- * ファイルシステム上にデータを永続化する実装
- */
-export class NodeFsStorage implements StorageBackend {
-  private dir: string
-  private indexPath: string
-  /**
-   * NodeFsStorage を初期化します。
-   * @param {string} dir 永続化ディレクトリ
-   */
-  constructor(dir: string) {
-    this.dir = dir
-    this.indexPath = path.join(this.dir, 'index.json')
-  }
-
-  /**
-   * ストレージ用ディレクトリを作成します。
-   * @returns {Promise<void>}
-   */
-  async init() {
-    await fs.mkdir(this.dir, { recursive: true })
-  }
-
-  /**
-   * index.json を読み込みます。存在しなければ null を返します。
-   * @returns {Promise<IndexFile|null>} 読み込んだ Index ファイル、または null
-   */
-  async readIndex() {
-    try {
-      const raw = await fs.readFile(this.indexPath, 'utf8')
-      return JSON.parse(raw) as IndexFile
-    } catch (err) {
-      return null
-    }
-  }
-
-  /**
-   * index.json を書き込みます。
-   * @param {IndexFile} index 書き込む Index データ
-   * @returns {Promise<void>}
-   */
-  async writeIndex(index: IndexFile) {
-    const data = JSON.stringify(index, null, 2)
-    await fs.writeFile(this.indexPath, data, 'utf8')
-  }
-
-  /**
-   * 指定パスへファイルを保存します。
-   * @param {string} filepath ファイルパス
-   * @param {string} content ファイル内容
-   * @returns {Promise<void>}
-   */
-  async writeBlob(filepath: string, content: string) {
-    const full = path.join(this.dir, filepath)
-    await fs.mkdir(path.dirname(full), { recursive: true })
-    await fs.writeFile(full, content, 'utf8')
-  }
-
-  /**
-   * 指定パスのファイルを読み出します。存在しなければ null を返します。
-   * @param {string} filepath ファイルパス
-   * @returns {Promise<string|null>} ファイル内容または null
-   */
-  async readBlob(filepath: string) {
-    try {
-      const full = path.join(this.dir, filepath)
-      return await fs.readFile(full, 'utf8')
-    } catch (err) {
-      return null
-    }
-  }
-
-  /**
-   * 指定パスのファイルを削除します。存在しない場合は無視されます。
-   * @param {string} filepath ファイルパス
-   * @returns {Promise<void>}
-   */
-  async deleteBlob(filepath: string) {
-    try {
-      const full = path.join(this.dir, filepath)
-      await fs.unlink(full)
-    } catch (err) {
-      // ignore
-    }
-  }
 }
 
 // BrowserStorage: use OPFS when available, otherwise IndexedDB

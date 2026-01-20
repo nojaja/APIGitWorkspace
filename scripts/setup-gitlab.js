@@ -17,7 +17,8 @@ if (!ROOT_PASSWORD) {
   if (!ROOT_PASSWORD) ROOT_PASSWORD = 'password';
 }
 const PROJECT_NAME = process.env.PROJECT_NAME || 'test-repo';
-const OUTPUT_FILE = process.env.OUTPUT_FILE || '/out/gitlab.config.json';
+const path = require('path');
+const OUTPUT_FILE = process.env.OUTPUT_FILE || path.join('test', 'conf', 'gitlab.config.json');
 
 const GITLAB_HOST_HEADER = process.env.GITLAB_HOST_HEADER || 'localhost:8929';
 
@@ -116,6 +117,13 @@ async function main() {
     host: GITLAB_URL,
   };
 
+  // Ensure parent directory exists when not running in container
+  try {
+    const dir = path.dirname(OUTPUT_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    // ignore directory creation errors, write will fail later if necessary
+  }
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(config, null, 2), { encoding: 'utf8' });
   console.log('Wrote config to', OUTPUT_FILE);
 }

@@ -1,6 +1,6 @@
-import crypto from 'crypto'
+import { sha1 } from '../utils/sha1'
 import { IndexFile, TombstoneEntry } from './types'
-import { StorageBackend, NodeFsStorage } from './persistence'
+import { StorageBackend, BrowserStorage } from './persistence'
 
 /**
  *
@@ -19,7 +19,7 @@ export class VirtualFS {
   constructor(options?: { storageDir?: string; backend?: StorageBackend }) {
     this.storageDir = options?.storageDir
     if (options?.backend) this.backend = options.backend
-    else this.backend = new NodeFsStorage(this.storageDir || '.apigit_workspace')
+    else this.backend = new BrowserStorage()
   }
 
 
@@ -29,7 +29,7 @@ export class VirtualFS {
    * @returns {string} 計算された SHA
    */
   private shaOf(content: string) {
-    return crypto.createHash('sha1').update(content, 'utf8').digest('hex')
+    return sha1(content)
   }
 
   /**

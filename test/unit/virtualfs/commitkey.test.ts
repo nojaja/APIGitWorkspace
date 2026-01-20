@@ -4,7 +4,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
+import { InMemoryStorage } from '../helpers/inmemoryStorage'
 
 let tmpDir: string
 beforeEach(async () => {
@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe('commitKey injection and index metadata', () => {
   it('injects commitKey into GitHub-style commit message and records lastCommitKey', async () => {
-    const vfs = new VirtualFS({ backend: new NodeFsStorage(tmpDir) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage(tmpDir) })
     await vfs.init()
     await vfs.writeWorkspace('x.txt', 'content-x')
     const changes = await vfs.getChangeSet()
@@ -44,7 +44,7 @@ describe('commitKey injection and index metadata', () => {
   })
 
   it('injects commitKey into GitLab actions commit message and records lastCommitKey', async () => {
-    const vfs = new VirtualFS({ backend: new NodeFsStorage(tmpDir) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage(tmpDir) })
     await vfs.init()
     await vfs.writeWorkspace('y.txt', 'content-y')
     const changes = await vfs.getChangeSet()

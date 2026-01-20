@@ -1,24 +1,17 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import fs from 'fs/promises'
-import path from 'path'
-import os from 'os'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
+import InMemoryStorage from '../helpers/inmemoryStorage'
 
 describe('VirtualFS additional branches', () => {
-  let tmpDir: string
   beforeEach(async () => {
     jest.clearAllMocks()
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apigit-vfs-'))
   })
   afterEach(async () => {
-    try {
-      await fs.rm(tmpDir, { recursive: true, force: true })
-    } catch (e) { void e }
+    jest.resetAllMocks()
   })
 
   it('handleRemoteExisting is no-op when baseSha equals remoteSha', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
@@ -33,7 +26,7 @@ describe('VirtualFS additional branches', () => {
   })
 
   it('handleRemoteExisting updates base when workspace unchanged', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
@@ -56,7 +49,7 @@ describe('VirtualFS additional branches', () => {
   })
 
   it('handleRemoteDeletion deletes when workspace has no changes', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
@@ -99,7 +92,7 @@ describe('VirtualFS additional branches', () => {
   })
 
   it('getChangeSet returns create/update/delete entries correctly', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 

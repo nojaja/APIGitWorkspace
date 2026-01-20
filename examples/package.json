@@ -1,0 +1,23 @@
+{
+  "name": "browser-git-ops-examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild --bundle ./src/app.ts --outfile=dist/bundle.js --format=iife --global-name=APIGitLib --platform=browser --sourcemap",
+    "postbuild": "node -e \"const fs=require('fs');const path=require('path');try{const rootSrc=path.resolve(process.cwd(),'..','dist','index.js');const rootDst=path.resolve(process.cwd(),'dist','index.js');if(fs.existsSync(rootSrc)){fs.copyFileSync(rootSrc,rootDst);console.log('copied root dist/index.js to examples/dist/index.js')}const htmlSrc=path.resolve(process.cwd(),'src','index.html');const htmlDst=path.resolve(process.cwd(),'dist','index.html');if(fs.existsSync(htmlSrc)){fs.copyFileSync(htmlSrc,htmlDst);console.log('copied src/index.html to dist/index.html')} }catch(e){console.error('copy failed:',e);process.exitCode=0;}\"",
+    "start": "http-server ./dist -p 8080",
+    "pretest:e2e": "npm run build",
+    "test:e2e": "playwright test --config=playwright.config.cjs",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "esbuild": "^0.18.17",
+    "http-server": "^14.1.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "browser-git-ops": "file:.."
+  }
+}

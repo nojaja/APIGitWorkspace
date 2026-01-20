@@ -1,5 +1,5 @@
 import { GitAdapter } from './adapter'
-import crypto from 'crypto'
+import { sha1 } from '../utils/sha1'
 
 type GHOptions = {
   owner: string
@@ -113,7 +113,7 @@ export class GitHubAdapter implements GitAdapter {
     const tasks = changes.filter((c) => c.type === 'create' || c.type === 'update')
     const mapper = async (ch: any) => {
       // compute simple content hash to enable cache lookup
-      const contentHash = crypto.createHash('sha1').update(ch.content || '', 'utf8').digest('hex')
+      const contentHash = sha1(ch.content || '')
       const cached = this.blobCache.get(contentHash)
       if (cached) return { path: ch.path, sha: cached }
       const body = JSON.stringify({ content: ch.content, encoding: 'utf-8' })

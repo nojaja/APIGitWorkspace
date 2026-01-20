@@ -1,21 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import fs from 'fs/promises'
-import path from 'path'
+import { describe, it, expect } from '@jest/globals'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
-
-const TMP = path.resolve('./.test_apigit_pp')
-
-beforeEach(async () => {
-  await fs.rm(TMP, { recursive: true, force: true })
-})
-afterEach(async () => {
-  await fs.rm(TMP, { recursive: true, force: true })
-})
+import InMemoryStorage from '../helpers/inmemoryStorage'
 
 describe('VirtualFS pull/push', () => {
   it('pull updates base when workspace unchanged', async () => {
-    const vfs = new VirtualFS({ storageDir: TMP, backend: new NodeFsStorage(TMP) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
     // initial base
     await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
@@ -30,7 +19,7 @@ describe('VirtualFS pull/push', () => {
   })
 
   it('pull reports conflict when workspace modified', async () => {
-    const vfs = new VirtualFS({ storageDir: TMP, backend: new NodeFsStorage(TMP) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
     await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
     // modify locally
@@ -42,7 +31,7 @@ describe('VirtualFS pull/push', () => {
   })
 
   it('push fails when head mismatched and succeeds otherwise', async () => {
-    const vfs = new VirtualFS({ storageDir: TMP, backend: new NodeFsStorage(TMP) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
     await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
     // make workspace change

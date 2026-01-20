@@ -1,22 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import fs from 'fs/promises'
-import path from 'path'
+import { describe, it, expect } from '@jest/globals'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
-
-const TMP = path.resolve('./.test_apigit')
-
-beforeEach(async () => {
-  await fs.rm(TMP, { recursive: true, force: true })
-})
-
-afterEach(async () => {
-  await fs.rm(TMP, { recursive: true, force: true })
-})
+import InMemoryStorage from '../helpers/inmemoryStorage'
 
 describe('VirtualFS 基本動作', () => {
   it('ファイルの追加・更新・削除と index.json の更新', async () => {
-      const vfs = new VirtualFS({ storageDir: TMP, backend: new NodeFsStorage(TMP) })
+      const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
 
     await vfs.writeWorkspace('foo.txt', 'hello')
@@ -35,7 +23,7 @@ describe('VirtualFS 基本動作', () => {
   })
 
   it('tombstone が作られるケース（base あり）', async () => {
-    const vfs = new VirtualFS({ storageDir: TMP, backend: new NodeFsStorage(TMP) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
     // apply base snapshot
     await vfs.applyBaseSnapshot({ 'a.txt': 'basecontent' }, 'head1')

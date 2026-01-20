@@ -1,23 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import fs from 'fs/promises'
-import path from 'path'
-import os from 'os'
+import { describe, it, expect } from '@jest/globals'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
-
-let tmpDir: string
-beforeEach(async () => {
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apigit-rn-'))
-})
-afterEach(async () => {
-  try {
-    await fs.rm(tmpDir, { recursive: true, force: true })
-  } catch (e) { void e }
-})
+import InMemoryStorage from '../helpers/inmemoryStorage'
 
 describe('renameWorkspace helper', () => {
   it('renames a base file to new path producing create+delete change set', async () => {
-    const vfs = new VirtualFS({ backend: new NodeFsStorage(tmpDir) })
+    const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
     // apply base snapshot
     await vfs.applyBaseSnapshot({ 'c.txt': 'content-c' }, 'h1')

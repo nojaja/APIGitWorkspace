@@ -146,5 +146,6 @@ vite.config.ts.timestamp-*
 /.github/skills
 /.apigit_workspace
 /test-results
-/test/e2e/github.config.json
-/test/e2e/gitlab.config.json
+/test/conf/github.config.json
+/test/conf/gitlab.config.json
+/examples/test-results

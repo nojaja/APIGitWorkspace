@@ -1,5 +1,5 @@
 import { GitAdapter } from './adapter'
-import crypto from 'crypto'
+import { sha1 } from '../utils/sha1'
 
 type GLOpts = { projectId: string; token: string; host?: string }
 
@@ -29,7 +29,7 @@ export class GitLabAdapter implements GitAdapter {
    * @returns {string} sha1 ハッシュ
    */
   private shaOf(content: string) {
-    return crypto.createHash('sha1').update(content, 'utf8').digest('hex')
+    return sha1(content)
   }
 
   /**

@@ -3,7 +3,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import VirtualFS from '../../../src/virtualfs/virtualfs'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
+import { InMemoryStorage } from '../helpers/inmemoryStorage'
 
 let tmpDir: string
 beforeEach(async () => {
@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe('VirtualFS conflict flows', () => {
   it('reports conflict when remote has new file but workspace has uncommitted changes', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage(tmpDir)
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
@@ -37,7 +37,7 @@ describe('VirtualFS conflict flows', () => {
   })
 
   it('reports conflict when remote changed and workspace modified', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage(tmpDir)
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
@@ -61,7 +61,7 @@ describe('VirtualFS conflict flows', () => {
   })
 
   it('reports conflict when remote deleted and workspace modified', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage(tmpDir)
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 

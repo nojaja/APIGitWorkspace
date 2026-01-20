@@ -1,26 +1,12 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
-import fs from 'fs/promises'
-import path from 'path'
-import os from 'os'
-import { NodeFsStorage } from '../../../src/virtualfs/persistence'
+import InMemoryStorage from '../helpers/inmemoryStorage'
 
-let tmpDir: string
-beforeEach(async () => {
-  jest.clearAllMocks()
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apigit-test-'))
-})
-afterEach(async () => {
-  // cleanup
-  try {
-    await fs.rm(tmpDir, { recursive: true, force: true })
-  } catch (e) {
-    // ignore
-  }
-})
+beforeEach(() => jest.clearAllMocks())
+afterEach(() => jest.resetAllMocks())
 
-describe('NodeFsStorage basic flows', () => {
-  it('init creates directory and write/read index', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+describe('InMemoryStorage basic flows', () => {
+  it('init and write/read index', async () => {
+    const storage = new InMemoryStorage()
     await storage.init()
 
     const index = { head: 'h', entries: {} }
@@ -28,11 +14,11 @@ describe('NodeFsStorage basic flows', () => {
 
     const read = await storage.readIndex()
     expect(read).not.toBeNull()
-    expect(read!.head).toBe('h')
+    expect(read.head).toBe('h')
   })
 
   it('writeBlob/readBlob/deleteBlob', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+    const storage = new InMemoryStorage()
     await storage.init()
 
     await storage.writeBlob('dir/a.txt', 'hello')
@@ -44,10 +30,11 @@ describe('NodeFsStorage basic flows', () => {
     expect(after).toBeNull()
   })
 
-  it('readIndex returns null when absent', async () => {
-    const storage = new NodeFsStorage(tmpDir)
+  it('readIndex returns default index when absent', async () => {
+    const storage = new InMemoryStorage()
     await storage.init()
     const r = await storage.readIndex()
-    expect(r).toBeNull()
+    expect(r).not.toBeNull()
+    expect(r.head).toBe('')
   })
 })

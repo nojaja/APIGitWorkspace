@@ -29,7 +29,7 @@ services:
       - gitlab
     volumes:
       - ./scripts:/scripts:ro
-      - ./test/e2e:/out
+      - ./test/conf:/out
       - ./data/gitlab/etc:/etc/gitlab:ro
     environment:
       GITLAB_URL: "http://gitlab:8929"

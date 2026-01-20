@@ -1,7 +1,8 @@
 {
   "name": "browser-git-ops",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "commonjs",
+  "module": "dist/index.mjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "description": "A browser-native Git operations library built with OPFS and Web APIs.",
@@ -21,6 +22,13 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
   "scripts": {
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand",
     "pretest:e2e": "npm run build",
@@ -28,7 +36,10 @@
     "test:ci": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage --runInBand",
     "lint": "eslint \"src/**/*.{ts,js}\" --config .eslintrc.cjs",
     "depcruise": "depcruise --config .dependency-cruiser.cjs src || exit 0",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.e2e.json"
+    "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "build:browser": "esbuild ./src/index.ts --bundle --outfile=dist/index.js --format=iife --global-name=APIGitLib --platform=browser --sourcemap",
+    "build:browser:esm": "esbuild ./src/index.ts --bundle --outfile=dist/index.mjs --format=esm --platform=browser --sourcemap",
+    "build": "npm run build:types && npm run build:browser && npm run build:browser:esm"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",
@@ -42,6 +53,8 @@
     "jest": "^29.6.1",
     "ts-jest": "^29.1.0",
     "typedoc": "^0.25.0",
-    "typescript": "5.3.3"
+    "typescript": "5.3.3",
+    "esbuild": "^0.18.17",
+    "http-server": "^14.1.1"
   }
 }
