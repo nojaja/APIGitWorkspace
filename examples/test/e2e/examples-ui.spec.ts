@@ -36,7 +36,7 @@ test.describe('Examples UI smoke', () => {
     await page.click('#connectBtn')
     await page.waitForTimeout(500)
 
-    await page.click('#initVfs')
+    await page.click('#connectIndexedDb')
     await page.waitForTimeout(700)
 
     await page.click('#listAdapters')

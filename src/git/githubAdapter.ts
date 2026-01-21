@@ -180,7 +180,11 @@ export class GitHubAdapter implements GitAdapter {
    * @returns {Promise<string>} 新規コミット SHA
    */
   async createCommit(message: string, parentSha: string, treeSha: string) {
-    const body = JSON.stringify({ message, tree: treeSha, parents: [parentSha] })
+    const parents = (typeof parentSha === 'string' && /^[0-9a-f]{40}$/.test(parentSha)) ? [parentSha] : []
+    const body = JSON.stringify({ message, tree: treeSha, parents })
+    // debug: log body for troubleshooting invalid parents
+    /* istanbul ignore next */
+    if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('GitHub.createCommit body:', body)
     const res = await this._fetchWithRetry(`${this.baseUrl}/git/commits`, { method: 'POST', headers: this.headers, body }, 4, 300)
     const j = await res.json()
     if (!j.sha) throw new NonRetryableError('createCommit response missing sha')
@@ -200,6 +204,86 @@ export class GitHubAdapter implements GitAdapter {
       const txt = await res.text().catch(() => '')
       throw new NonRetryableError(`updateRef failed: ${res.status} ${txt}`)
     }
+  }
+
+  /**
+   * 指定コミットの tree SHA を取得します。
+   * @param commitSha コミット SHA
+   */
+  async getCommitTreeSha(commitSha: string) {
+    const res = await this._fetchWithRetry(`${this.baseUrl}/git/commits/${commitSha}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const j = await res.json()
+    if (!j || !j.tree || !j.tree.sha) throw new NonRetryableError('getCommitTreeSha: tree sha not found')
+    return j.tree.sha as string
+  }
+
+  /**
+   * 指定 ref の先頭コミット SHA を取得します。
+   * @param ref 例: `heads/main`
+   */
+  async getRef(ref: string) {
+    const res = await this._fetchWithRetry(`${this.baseUrl}/git/ref/${ref}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const j = await res.json()
+    if (!j || !j.object || !j.object.sha) throw new NonRetryableError('getRef: sha not found')
+    return j.object.sha as string
+  }
+
+  /**
+   * tree を取得します（必要なら再帰取得）。
+   * @param treeSha tree の SHA
+   * @param recursive 再帰フラグ
+   */
+  async getTree(treeSha: string, recursive = false) {
+    const url = `${this.baseUrl}/git/trees/${treeSha}` + (recursive ? '?recursive=1' : '')
+    const res = await this._fetchWithRetry(url, { method: 'GET', headers: this.headers }, 4, 300)
+    const j = await res.json()
+    if (!j || !j.tree) throw new NonRetryableError('getTree: tree not found')
+    return j.tree as any[]
+  }
+
+  /**
+   * blob を取得してデコードして返します。
+   * @param blobSha blob の SHA
+   */
+  async getBlob(blobSha: string) {
+    const res = await this._fetchWithRetry(`${this.baseUrl}/git/blobs/${blobSha}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const j = await res.json()
+    if (!j || typeof j.content === 'undefined') throw new NonRetryableError('getBlob: content not found')
+    const enc = j.encoding || 'utf-8'
+    let content: string
+    if (enc === 'base64') {
+      content = atob((j.content || '').replace(/\n/g, ''))
+    } else {
+      content = j.content
+    }
+    return { content, encoding: enc }
+  }
+
+  /**
+   * リポジトリのスナップショットを取得します。
+   * @param {string} branch ブランチ名 (default: 'main')
+   */
+  async fetchSnapshot(branch = 'main', concurrency = 5) {
+    const refRes = await this._fetchWithRetry(`${this.baseUrl}/git/refs/heads/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const refJ = await refRes.json()
+    const headSha = (refJ && (refJ.object && refJ.object.sha ? refJ.object.sha : refJ.sha)) || branch
+
+    const treeRes = await this._fetchWithRetry(`${this.baseUrl}/git/trees/${headSha}${'?recursive=1'}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const treeJ = await treeRes.json()
+    const files = (treeJ && treeJ.tree) ? treeJ.tree.filter((t: any) => t.type === 'blob') : []
+    const snapshot: Record<string, string> = {}
+
+    await mapWithConcurrency(files, async (f: any) => {
+      try {
+        const b = await this.getBlob(f.sha)
+        snapshot[f.path] = b.content
+      } catch (e) {
+        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot blob failed', f.path, e)
+      }
+      return null
+    }, concurrency)
+
+    return { headSha, snapshot }
   }
 }
 

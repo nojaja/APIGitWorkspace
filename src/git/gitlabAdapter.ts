@@ -184,6 +184,52 @@ export class GitLabAdapter implements GitAdapter {
     const jitter = Math.floor(Math.random() * base * 0.3)
     return base + jitter
   }
+
+  // small concurrency mapper used for fetching files
+  private async mapWithConcurrency<T, R>(items: T[], mapper: (_t: T) => Promise<R>, concurrency = 5) {
+    const results: R[] = []
+    let idx = 0
+    const runners: Promise<void>[] = []
+    const run = async () => {
+      while (idx < items.length) {
+        const i = idx++
+        if (i >= items.length) break
+        const r = await mapper(items[i])
+        results[i] = r
+      }
+    }
+    for (let i = 0; i < Math.min(concurrency, items.length); i++) runners.push(run())
+    await Promise.all(runners)
+    return results
+  }
+
+  /**
+   * リポジトリのスナップショットを取得します。
+   * @param {string} branch ブランチ名 (default: 'main')
+   */
+  async fetchSnapshot(branch = 'main', concurrency = 5) {
+    const treeRes = await this.fetchWithRetry(`${this.baseUrl}/repository/tree?recursive=true&ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+    const treeJ = await treeRes.json()
+    const files = Array.isArray(treeJ) ? treeJ.filter((t: any) => t.type === 'blob') : []
+    const snapshot: Record<string, string> = {}
+
+    await this.mapWithConcurrency(files, async (f: any) => {
+      try {
+        const rawRes = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(f.path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+        if (!rawRes.ok) {
+          if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', f.path, rawRes.status)
+          return null
+        }
+        const content = await rawRes.text()
+        snapshot[f.path] = content
+      } catch (e) {
+        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', f.path, e)
+      }
+      return null
+    }, concurrency)
+
+    return { headSha: branch, snapshot }
+  }
 }
 
 export default GitLabAdapter

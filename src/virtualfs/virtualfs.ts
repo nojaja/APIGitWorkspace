@@ -394,11 +394,20 @@ export class VirtualFS {
    */
   private async _pushWithActions(adapter: any, input: any, branch: string) {
     const commitSha = await adapter.createCommitWithActions(branch, input.message, input.changes as any[])
-    try {
-      await adapter.updateRef(`heads/${branch}`, commitSha)
-    } catch (e) {
-      // ignore; adapter may not support updateRef
-    }
+        if (typeof adapter.updateRef === 'function') {
+          try {
+            await adapter.updateRef(`heads/${branch}`, commitSha)
+          } catch (err: any) {
+            const msg = String(err && err.message ? err.message : err)
+            // If the error indicates a non-fast-forward (conflict), do NOT apply locally and
+            // surface an error to the caller requiring a pull.
+            if (msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)) {
+              throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
+            }
+            // For other transient/non-fatal errors, log and continue — still apply changes locally.
+            if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', err)
+          }
+        }
     for (const ch of input.changes as any[]) {
       await this._applyChangeLocally(ch)
     }
@@ -414,12 +423,28 @@ export class VirtualFS {
   private async _pushWithGitHubFlow(adapter: any, input: any, branch: string) {
     const blobMap = await adapter.createBlobs(input.changes as any[])
     const changesWithBlob = (input.changes as any[]).map((c) => ({ ...c, blobSha: blobMap[c.path] }))
-    const treeSha = await adapter.createTree(changesWithBlob)
+    // Attempt to base the new tree on the parent commit's tree so we only modify diffs
+    let baseTreeSha: string | undefined = undefined
+    if (input.parentSha && typeof (adapter as any).getCommitTreeSha === 'function') {
+      try {
+        baseTreeSha = await (adapter as any).getCommitTreeSha(input.parentSha)
+      } catch (e) {
+        // ignore and proceed without base_tree if fetching fails
+        baseTreeSha = undefined
+      }
+    }
+    const treeSha = await adapter.createTree(changesWithBlob, baseTreeSha)
     const commitSha = await adapter.createCommit(input.message, input.parentSha, treeSha)
-    try {
-      await adapter.updateRef(`heads/${branch}`, commitSha)
-    } catch (e) {
-      // ignore; adapter may not support updateRef
+    if (typeof adapter.updateRef === 'function') {
+      try {
+        await adapter.updateRef(`heads/${branch}`, commitSha)
+      } catch (err: any) {
+        const msg = String(err && err.message ? err.message : err)
+        if (msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)) {
+          throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
+        }
+        if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', err)
+      }
     }
     for (const ch of input.changes as any[]) {
       await this._applyChangeLocally(ch)
@@ -471,7 +496,10 @@ export class VirtualFS {
    * @returns {Promise<{commitSha:string}>}
    */
   async push(input: import('./types').CommitInput, adapter?: import('../git/adapter').GitAdapter) {
-    // pre-check
+    // pre-check: only reject when parentSha is undefined/null
+    if (input.parentSha === undefined || input.parentSha === null) {
+      throw new Error('No parentSha set. pull required')
+    }
     if (input.parentSha !== this.index.head) {
       throw new Error('HEAD changed. pull required')
     }
