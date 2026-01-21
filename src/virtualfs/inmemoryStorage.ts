@@ -64,7 +64,13 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
    * @returns {Promise<string|null>} 内容、存在しなければ null
    */
   async readBlob(filepath: string): Promise<string | null> {
-    return this.blobs.has(filepath) ? this.blobs.get(filepath)! : null
+    if (this.blobs.has(filepath)) return this.blobs.get(filepath)!
+    // backward-compatible read-through: check workspace/ then .git-base/
+    const wsKey = `workspace/${filepath}`
+    if (this.blobs.has(wsKey)) return this.blobs.get(wsKey)!
+    const baseKey = `.git-base/${filepath}`
+    if (this.blobs.has(baseKey)) return this.blobs.get(baseKey)!
+    return null
   }
 
   /**
@@ -72,7 +78,10 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
    * @param filepath ファイルパス
    */
   async deleteBlob(filepath: string): Promise<void> {
+    // delete plain key and any workspace/.git-base variants
     this.blobs.delete(filepath)
+    this.blobs.delete(`workspace/${filepath}`)
+    this.blobs.delete(`.git-base/${filepath}`)
   }
 }
 

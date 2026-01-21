@@ -98,8 +98,8 @@ export class VirtualFS {
       workspaceSha: sha,
       updatedAt: now,
     }
-    // persist workspace blob (optional)
-    await this.backend.writeBlob(filepath, content)
+    // persist workspace blob (optional) under workspace/
+    await this.backend.writeBlob(`workspace/${filepath}`, content)
     await this.saveIndex()
   }
 
@@ -120,11 +120,17 @@ export class VirtualFS {
         baseSha: entry.baseSha,
         updatedAt: now,
       }
+      // remove any workspace copy from backend
+      try {
+        await this.backend.deleteBlob(`workspace/${filepath}`)
+      } catch (_) {
+        // ignore
+      }
     } else {
       // created in workspace and deleted before push
       delete this.index.entries[filepath]
       this.workspace.delete(filepath)
-      await this.backend.deleteBlob(filepath)
+      await this.backend.deleteBlob(`workspace/${filepath}`)
     }
     await this.saveIndex()
   }
@@ -155,9 +161,12 @@ export class VirtualFS {
   async readWorkspace(filepath: string) {
     const w = this.workspace.get(filepath)
     if (w) return w.content
-    // try backend blob
-    const blob = await this.backend.readBlob(filepath)
-    if (blob !== null) return blob
+    // try workspace blob in backend first (read-through)
+    const wsBlob = await this.backend.readBlob(`workspace/${filepath}`)
+    if (wsBlob !== null) return wsBlob
+    // then try base (.git-base)
+    const baseBlob = await this.backend.readBlob(`.git-base/${filepath}`)
+    if (baseBlob !== null) return baseBlob
     const b = this.base.get(filepath)
     if (b && b.content) return b.content
     return null
@@ -171,27 +180,68 @@ export class VirtualFS {
    */
   async applyBaseSnapshot(snapshot: Record<string, string>, headSha: string) {
     // snapshot: path -> content
-    this.base.clear()
+    // Compute new shas and do a diff against current this.base to minimize writes/deletes
+    const newShas: Record<string, string> = {}
     for (const [p, c] of Object.entries(snapshot)) {
-      this.base.set(p, { sha: await this.shaOf(c), content: c })
-      // persist base blob
-      await this.backend.writeBlob(p, c)
+      newShas[p] = await this.shaOf(c)
     }
-    // update index entries for files not touched in workspace
-    for (const [p, be] of this.base.entries()) {
+
+    // Determine added/changed/removed
+    const toAddOrUpdate: string[] = []
+    const toRemove: string[] = []
+
+    // check for adds/changes
+    for (const [p, c] of Object.entries(snapshot)) {
+      const existing = this.base.get(p)
+      const sha = newShas[p]
+      if (!existing) {
+        toAddOrUpdate.push(p)
+      } else if (existing.sha !== sha) {
+        toAddOrUpdate.push(p)
+      }
+    }
+
+    // check for removals
+    for (const p of Array.from(this.base.keys())) {
+      if (!(p in snapshot)) toRemove.push(p)
+    }
+
+    // Apply removals first
+    for (const p of toRemove) {
+      this.base.delete(p)
+      // remove persisted base blob
+      try {
+        await this.backend.deleteBlob(`.git-base/${p}`)
+      } catch (_) {
+        // ignore backend errors
+      }
+      // update index: if entry existed and was base-only, remove entry
+      const ie = this.index.entries[p]
+      if (ie && ie.state === 'base') {
+        delete this.index.entries[p]
+      }
+    }
+
+    // Apply adds/updates: write only changed content
+    for (const p of toAddOrUpdate) {
+      const content = snapshot[p]
+      const sha = newShas[p]
+      this.base.set(p, { sha, content })
+      try {
+        await this.backend.writeBlob(`.git-base/${p}`, content)
+      } catch (_) {
+        // ignore backend write failures for now
+      }
       const existing = this.index.entries[p]
       if (!existing) {
-        this.index.entries[p] = {
-          path: p,
-          state: 'base',
-          baseSha: be.sha,
-          updatedAt: Date.now(),
-        }
+        this.index.entries[p] = { path: p, state: 'base', baseSha: sha, updatedAt: Date.now() }
       } else if (existing.state === 'base') {
-        existing.baseSha = be.sha
+        existing.baseSha = sha
         existing.updatedAt = Date.now()
       }
     }
+
+    // Ensure index.head and save
     this.index.head = headSha
     await this.saveIndex()
   }
@@ -320,7 +370,7 @@ export class VirtualFS {
       const content = baseSnapshot[p]
       this.base.set(p, { sha: remoteSha, content })
       this.index.entries[p] = { path: p, state: 'base', baseSha: remoteSha, updatedAt: Date.now() }
-      await this.backend.writeBlob(p, content)
+      await this.backend.writeBlob(`.git-base/${p}`, content)
     }
   }
 
@@ -335,11 +385,10 @@ export class VirtualFS {
     if (!localWorkspace || localWorkspace.sha === baseSha) {
       // workspace unchanged -> update base
       const content = baseSnapshot[p]
-      this.base.set(p, { sha: remoteSha, content })
       idxEntry.baseSha = remoteSha
       idxEntry.state = 'base'
       idxEntry.updatedAt = Date.now()
-      await this.backend.writeBlob(p, content)
+      await this.backend.writeBlob(`.git-base/${p}`, content)
     } else {
       // workspace modified -> conflict
       conflicts.push({ path: p, baseSha, remoteSha, workspaceSha: localWorkspace?.sha })
@@ -361,13 +410,13 @@ export class VirtualFS {
       entry.updatedAt = Date.now()
       entry.workspaceSha = undefined
       this.index.entries[ch.path] = entry
-      await this.backend.writeBlob(ch.path, ch.content)
+      await this.backend.writeBlob(`.git-base/${ch.path}`, ch.content)
       this.workspace.delete(ch.path)
     } else if (ch.type === 'delete') {
       delete this.index.entries[ch.path]
       this.base.delete(ch.path)
       this.tombstones.delete(ch.path)
-      await this.backend.deleteBlob(ch.path)
+      await this.backend.deleteBlob(`.git-base/${ch.path}`)
       this.workspace.delete(ch.path)
     }
   }
@@ -382,7 +431,7 @@ export class VirtualFS {
       // safe to delete locally
       delete this.index.entries[p]
       this.base.delete(p)
-      await this.backend.deleteBlob(p)
+      await this.backend.deleteBlob(`.git-base/${p}`)
     } else {
       conflicts.push({ path: p, baseSha: e.baseSha, workspaceSha: localWorkspace?.sha })
     }
