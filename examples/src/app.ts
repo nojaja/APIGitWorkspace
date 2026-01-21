@@ -271,7 +271,7 @@ async function main() {
             appendOutput(`  remoteSha: ${c.remoteSha ?? '<なし>'}`)
             // local workspace content (may be null)
             try {
-              const localContent = await currentVfs.readWorkspace(path)
+              const localContent = await currentVfs.readFile(path)
               const lsnippet = localContent === null ? '<存在しない>' : (typeof localContent === 'string' ? localContent.slice(0, 400).replace(/\r?\n/g, '\\n') : String(localContent))
               appendOutput(`  local (workspace) snippet: ${lsnippet}`)
             } catch (e) {
@@ -368,8 +368,8 @@ async function main() {
     const path = prompt('作成するファイル名を入力してください（例: examples/new.txt）')
     if (!path) return
     const content = prompt('ファイル内容を入力してください', 'hello') || ''
-    try {
-      await currentVfs.writeWorkspace(path, content)
+      try {
+      await currentVfs.writeFile(path, content)
       appendOutput(`ローカルにファイルを追加しました: ${path}`)
     } catch (e) { appendOutput('addLocalFile 失敗: ' + String(e)) }
   })
@@ -416,7 +416,7 @@ async function main() {
           appendOutput('ファイル数: ' + paths.length)
           for (const p of paths) {
             try {
-              const content = await currentVfs.readWorkspace(p)
+              const content = await currentVfs.readFile(p)
               const snippet = typeof content === 'string' ? content.slice(0, 200).replace(/\r?\n/g, '\\n') : String(content)
               appendOutput(`- ${p} : ${snippet}`)
             } catch (e) {

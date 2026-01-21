@@ -260,6 +260,21 @@ export class GitHubAdapter implements GitAdapter {
   }
 
   /**
+   * Blob を取得して content を返す。取得失敗時は content=null を返す。
+   * @param {{sha:string,path:string}} f blob 情報
+   * @returns {Promise<{path:string,content:string|null}>}
+   */
+  private async _fetchBlobContentOrNull(f: any) {
+    try {
+      const b = await this.getBlob(f.sha)
+      return { path: f.path, content: b.content }
+    } catch (e) {
+      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot blob failed', f.path, e)
+      return { path: f.path, content: null }
+    }
+  }
+
+  /**
    * リポジトリのスナップショットを取得します。
    * @param {string} branch ブランチ名 (default: 'main')
    */
@@ -271,17 +286,12 @@ export class GitHubAdapter implements GitAdapter {
     const treeRes = await this._fetchWithRetry(`${this.baseUrl}/git/trees/${headSha}${'?recursive=1'}`, { method: 'GET', headers: this.headers }, 4, 300)
     const treeJ = await treeRes.json()
     const files = (treeJ && treeJ.tree) ? treeJ.tree.filter((t: any) => t.type === 'blob') : []
-    const snapshot: Record<string, string> = {}
 
-    await mapWithConcurrency(files, async (f: any) => {
-      try {
-        const b = await this.getBlob(f.sha)
-        snapshot[f.path] = b.content
-      } catch (e) {
-        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot blob failed', f.path, e)
-      }
-      return null
-    }, concurrency)
+    const results = await mapWithConcurrency(files, (f: any) => this._fetchBlobContentOrNull(f), concurrency)
+    const snapshot: Record<string, string> = {}
+    for (const r of results) {
+      if (r && r.content !== null) snapshot[r.path] = r.content
+    }
 
     return { headSha, snapshot }
   }
@@ -289,3 +299,5 @@ export class GitHubAdapter implements GitAdapter {
 
 export { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency }
 export default GitHubAdapter
+
+// helper moved into class as a private method

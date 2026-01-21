@@ -7,16 +7,16 @@ describe('VirtualFS 基本動作', () => {
       const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
 
-    await vfs.writeWorkspace('foo.txt', 'hello')
+    await vfs.writeFile('foo.txt', 'hello')
     let idx = vfs.getIndex()
     expect(idx.entries['foo.txt']).toBeDefined()
     expect(idx.entries['foo.txt'].state).toBe('added')
 
-    await vfs.writeWorkspace('foo.txt', 'hello2')
+    await vfs.writeFile('foo.txt', 'hello2')
     idx = vfs.getIndex()
     expect(idx.entries['foo.txt'].state).toBe('added')
 
-    await vfs.deleteWorkspace('foo.txt')
+    await vfs.deleteFile('foo.txt')
     idx = vfs.getIndex()
     // since it was added then deleted before base exists, entry removed
     expect(idx.entries['foo.txt']).toBeUndefined()
@@ -27,8 +27,8 @@ describe('VirtualFS 基本動作', () => {
     await vfs.init()
     // apply base snapshot
     await vfs.applyBaseSnapshot({ 'a.txt': 'basecontent' }, 'head1')
-    await vfs.writeWorkspace('a.txt', 'modified')
-    await vfs.deleteWorkspace('a.txt')
+    await vfs.writeFile('a.txt', 'modified')
+    await vfs.deleteFile('a.txt')
     const tombs = vfs.getTombstones()
     expect(tombs.length).toBe(1)
     const changes = await vfs.getChangeSet()

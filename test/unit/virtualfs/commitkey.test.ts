@@ -20,7 +20,7 @@ describe('commitKey injection and index metadata', () => {
   it('injects commitKey into GitHub-style commit message and records lastCommitKey', async () => {
     const vfs = new VirtualFS({ backend: new InMemoryStorage(tmpDir) })
     await vfs.init()
-    await vfs.writeWorkspace('x.txt', 'content-x')
+    await vfs.writeFile('x.txt', 'content-x')
     const changes = await vfs.getChangeSet()
     const parent = vfs.getIndex().head
 
@@ -46,7 +46,7 @@ describe('commitKey injection and index metadata', () => {
   it('injects commitKey into GitLab actions commit message and records lastCommitKey', async () => {
     const vfs = new VirtualFS({ backend: new InMemoryStorage(tmpDir) })
     await vfs.init()
-    await vfs.writeWorkspace('y.txt', 'content-y')
+    await vfs.writeFile('y.txt', 'content-y')
     const changes = await vfs.getChangeSet()
     const parent = vfs.getIndex().head
 

@@ -14,7 +14,7 @@ describe('VirtualFS pull/push', () => {
     expect(res.conflicts.length).toBe(0)
     const idx = vfs.getIndex()
     expect(idx.head).toBe('head2')
-    const content = await vfs.readWorkspace('a.txt')
+    const content = await vfs.readFile('a.txt')
     expect(content).toBe('v2')
   })
 
@@ -23,7 +23,7 @@ describe('VirtualFS pull/push', () => {
     await vfs.init()
     await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
     // modify locally
-    await vfs.writeWorkspace('a.txt', 'local-mod')
+    await vfs.writeFile('a.txt', 'local-mod')
     // remote updated
     const remote = { 'a.txt': 'v2' }
     const res = await vfs.pull('head2', remote)
@@ -35,7 +35,7 @@ describe('VirtualFS pull/push', () => {
     await vfs.init()
     await vfs.applyBaseSnapshot({ 'a.txt': 'v1' }, 'head1')
     // make workspace change
-    await vfs.writeWorkspace('a.txt', 'v1-mod')
+    await vfs.writeFile('a.txt', 'v1-mod')
     const changes = await vfs.getChangeSet()
 
     // try push with wrong parent
@@ -46,8 +46,8 @@ describe('VirtualFS pull/push', () => {
     expect(result.commitSha).toBeDefined()
     const idx = vfs.getIndex()
     expect(idx.head).toBe(result.commitSha)
-    // workspace cleaned and base updated (readWorkspace returns base blob)
-    const w = await vfs.readWorkspace('a.txt')
+    // workspace cleaned and base updated (readFile returns base blob)
+    const w = await vfs.readFile('a.txt')
     expect(w).toBe('v1-mod')
   })
 })

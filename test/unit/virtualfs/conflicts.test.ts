@@ -23,7 +23,7 @@ describe('VirtualFS conflict flows', () => {
     await vfs.init()
 
     // local workspace has file not present in index
-    await vfs.writeWorkspace('c.txt', 'local-c')
+    await vfs.writeFile('c.txt', 'local-c')
 
     // remote snapshot contains c.txt
     const baseSnapshot: Record<string, string> = { 'c.txt': 'remote-c' }
@@ -46,7 +46,7 @@ describe('VirtualFS conflict flows', () => {
     await vfs.applyBaseSnapshot(initialSnapshot, 'h1')
 
     // local modify
-    await vfs.writeWorkspace('d.txt', 'local-edit')
+    await vfs.writeFile('d.txt', 'local-edit')
 
     // remote changed
     const remoteSnapshot = { 'd.txt': 'remote-edit' }
@@ -70,7 +70,7 @@ describe('VirtualFS conflict flows', () => {
     await vfs.applyBaseSnapshot(initialSnapshot, 'h1')
 
     // modify locally
-    await vfs.writeWorkspace('e.txt', 'local')
+    await vfs.writeFile('e.txt', 'local')
 
     // remote snapshot excludes e.txt (deleted)
     const remoteSnapshot: Record<string, string> = {}

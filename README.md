@@ -37,7 +37,7 @@ async function example() {
   const vfs = new VirtualFS({ backend: new OpfsStorage() })
   await vfs.init()
 
-  await vfs.writeWorkspace('README.md', 'hello world')
+  await vfs.writeFile('README.md', 'hello world')
   const changes = await vfs.getChangeSet()
 
   const gh = new GitHubAdapter({ owner: 'ORG', repo: 'REPO', token: process.env.GH_TOKEN })
@@ -112,7 +112,7 @@ npm run build       # 型定義 + ブラウザバンドル出力 (dist/)
 
 - `new VirtualFS(options?)` — オプション: `{ storageDir?: string, backend?: StorageBackend }`。
 - `init()` — バックエンド初期化・index 読み込み。
-- `writeWorkspace(path, content)` / `deleteWorkspace(path)` / `renameWorkspace(from,to)` — ローカル編集操作。
+- `writeFile(path, content)` / `deleteFile(path)` / `renameFile(from,to)` — ローカル編集操作。
 - `getChangeSet()` — create/update/delete の変更配列を取得。
 - `applyBaseSnapshot(snapshot, headSha)` — リモートスナップショット適用（conflicts を返す）。
 

@@ -97,15 +97,15 @@ describe('VirtualFS additional branches', () => {
     await vfs.init()
 
     // create added file
-    await vfs.writeWorkspace('new.txt', 'new-content')
+    await vfs.writeFile('new.txt', 'new-content')
 
     // create base then modify a different file
     await vfs.applyBaseSnapshot({ 'mod.txt': 'base' }, 'h1')
-    await vfs.writeWorkspace('mod.txt', 'modified')
+    await vfs.writeFile('mod.txt', 'modified')
 
     // create base and then delete to produce tombstone
     await vfs.applyBaseSnapshot({ 'del.txt': 'x' }, 'h2')
-    await vfs.deleteWorkspace('del.txt')
+    await vfs.deleteFile('del.txt')
 
     const changes = await vfs.getChangeSet()
     const types = changes.map((c: any) => c.type).sort()
@@ -129,8 +129,8 @@ describe('VirtualFS additional branches', () => {
     }
     const vfs = new VirtualFS({ backend: fakeBackend as any })
     await vfs.init()
-    // readWorkspace should return '' because workspace map populated with empty content
-    const got = await vfs.readWorkspace('a.txt')
+    // readFile should return '' because workspace map populated with empty content
+    const got = await vfs.readFile('a.txt')
     expect(got).toBe('')
   })
 })

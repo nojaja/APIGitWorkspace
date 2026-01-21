@@ -22,15 +22,15 @@ const vfsSimpleScript = `(() => {
     return { commit: { id: head } };
   }
 
-  return {
-    readWorkspace: (p) => {
+    return {
+    readFile: (p) => {
       if (p in workspace) return workspace[p];
       if (p in base) return base[p];
       return '';
     },
-    writeWorkspace: (p, content) => { workspace[p] = content; tombstone.delete(p); },
-    deleteWorkspace: (p) => { delete workspace[p]; if (p in base) tombstone.add(p); },
-    renameWorkspace: (from, to) => {
+    writeFile: (p, content) => { workspace[p] = content; tombstone.delete(p); },
+    deleteFile: (p) => { delete workspace[p]; if (p in base) tombstone.add(p); },
+    renameFile: (from, to) => {
       if (from in workspace) { workspace[to] = workspace[from]; delete workspace[from]; }
       else if (from in base) { tombstone.add(from); workspace[to] = base[from]; }
     },
@@ -58,17 +58,17 @@ const vfsSimpleScript = `(() => {
 test.describe('VirtualFS E2E (browser)', () => {
   test('basic add/update/delete', async ({ page }) => {
     // inject in-page vfs and run tests without depending on bundle
-    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+      await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
     await page.goto('about:blank')
     const state = await page.evaluate(async () => {
       const vfs = (window as any).vfs
-      await vfs.writeWorkspace('foo.txt', 'hello')
+      await vfs.writeFile('foo.txt', 'hello')
       let idx = vfs.getIndex()
       const s1 = idx.entries['foo.txt'].state
-      await vfs.writeWorkspace('foo.txt', 'hello2')
+      await vfs.writeFile('foo.txt', 'hello2')
       idx = vfs.getIndex()
       const s2 = idx.entries['foo.txt'].state
-      await vfs.deleteWorkspace('foo.txt')
+      await vfs.deleteFile('foo.txt')
       idx = vfs.getIndex()
       const exists = !!idx.entries['foo.txt']
       return { s1, s2, exists }
@@ -79,13 +79,13 @@ test.describe('VirtualFS E2E (browser)', () => {
   })
 
   test('tombstone case with base', async ({ page }) => {
-    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+      await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
     await page.goto('about:blank')
     const res = await page.evaluate(async () => {
       const vfs = (window as any).vfs
       await vfs.applyBaseSnapshot({ 'a.txt': 'basecontent' }, 'head1')
-      await vfs.writeWorkspace('a.txt', 'modified')
-      await vfs.deleteWorkspace('a.txt')
+      await vfs.writeFile('a.txt', 'modified')
+      await vfs.deleteFile('a.txt')
       const tombs = vfs.getTombstones()
       const changes = await vfs.getChangeSet()
       return { tombsLength: tombs.length, hasDelete: changes.some((c: any) => c.type === 'delete' && c.path === 'a.txt') }
@@ -95,7 +95,7 @@ test.describe('VirtualFS E2E (browser)', () => {
   })
 
   test('pull updates base when workspace unchanged', async ({ page }) => {
-    await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
+      await page.addInitScript({ content: 'window.vfs = ' + vfsSimpleScript })
     await page.goto('about:blank')
     const result = await page.evaluate(async () => {
       const vfs = (window as any).vfs
@@ -103,7 +103,7 @@ test.describe('VirtualFS E2E (browser)', () => {
       const remote = { 'a.txt': 'v2' }
       // simulate pull by applying snapshot
       await vfs.applyBaseSnapshot(remote, 'head2')
-      return { conflicts: 0, head: vfs.getIndex().head, content: await vfs.readWorkspace('a.txt') }
+      return { conflicts: 0, head: vfs.getIndex().head, content: await vfs.readFile('a.txt') }
     })
     expect(result.conflicts).toBe(0)
     expect(result.head).toBe('head2')

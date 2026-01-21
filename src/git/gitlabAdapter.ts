@@ -4,7 +4,9 @@ import { GitAdapter } from './adapter'
 type GLOpts = { projectId: string; token: string; host?: string }
 
 /**
- *
+ * GitLab 向けの GitAdapter 実装です。
+ * GitLab の API をラップして、リポジトリスナップショットの取得や
+ * commits API の呼び出しをサポートします。
  */
 export class GitLabAdapter implements GitAdapter {
   private baseUrl: string
@@ -186,10 +188,21 @@ export class GitLabAdapter implements GitAdapter {
   }
 
   // small concurrency mapper used for fetching files
+  /**
+   * 並列マッピングユーティリティ
+   * @template T, R
+   * @param {T[]} items 入力配列
+   * @param {(t:T)=>Promise<R>} mapper マッピング関数
+   * @param {number} concurrency 同時実行数
+   * @returns {Promise<R[]>}
+   */
   private async mapWithConcurrency<T, R>(items: T[], mapper: (_t: T) => Promise<R>, concurrency = 5) {
     const results: R[] = []
     let idx = 0
     const runners: Promise<void>[] = []
+    /**
+     * 実行ランナー: キューから項目を取り出して mapper を実行します。
+     */
     const run = async () => {
       while (idx < items.length) {
         const i = idx++
@@ -206,6 +219,7 @@ export class GitLabAdapter implements GitAdapter {
   /**
    * リポジトリのスナップショットを取得します。
    * @param {string} branch ブランチ名 (default: 'main')
+  * @returns {Promise<{headSha:string,snapshot:Record<string,string>}>}
    */
   async fetchSnapshot(branch = 'main', concurrency = 5) {
     const treeRes = await this.fetchWithRetry(`${this.baseUrl}/repository/tree?recursive=true&ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
@@ -214,21 +228,32 @@ export class GitLabAdapter implements GitAdapter {
     const snapshot: Record<string, string> = {}
 
     await this.mapWithConcurrency(files, async (f: any) => {
-      try {
-        const rawRes = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(f.path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
-        if (!rawRes.ok) {
-          if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', f.path, rawRes.status)
-          return null
-        }
-        const content = await rawRes.text()
-        snapshot[f.path] = content
-      } catch (e) {
-        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', f.path, e)
-      }
+      const content = await this._fetchFileRaw(f.path, branch)
+      if (content !== null) snapshot[f.path] = content
       return null
     }, concurrency)
 
     return { headSha: branch, snapshot }
+  }
+
+  /**
+   * ファイルの raw コンテンツを取得して返します。失敗時は null を返します。
+   * @param {string} path ファイルパス
+   * @param {string} branch ブランチ名
+   * @returns {Promise<string|null>} ファイル内容または null
+   */
+  private async _fetchFileRaw(path: string, branch: string) {
+    try {
+      const rawRes = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+      if (!rawRes.ok) {
+        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', path, rawRes.status)
+        return null
+      }
+      return await rawRes.text()
+    } catch (e) {
+      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', path, e)
+      return null
+    }
   }
 }
 

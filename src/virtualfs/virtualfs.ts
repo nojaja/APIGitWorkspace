@@ -78,14 +78,14 @@ export class VirtualFS {
 
   /**
    *
-   */
+  */
   /**
-   * ワークスペースにファイルを書き込みます（ローカル編集）。
+   * ファイルを書き込みます（ローカル編集）。
    * @param {string} filepath ファイルパス
    * @param {string} content コンテンツ
    * @returns {Promise<void>}
    */
-  async writeWorkspace(filepath: string, content: string) {
+  async writeFile(filepath: string, content: string) {
     const sha = await this.shaOf(content)
     this.workspace.set(filepath, { sha, content })
     const now = Date.now()
@@ -104,11 +104,11 @@ export class VirtualFS {
   }
 
   /**
-   * ワークスペース上のファイルを削除します（トゥームストーン作成を含む）。
+   * ファイルを削除します（トゥームストーン作成を含む）。
    * @param {string} filepath ファイルパス
    * @returns {Promise<void>}
    */
-  async deleteWorkspace(filepath: string) {
+  async deleteFile(filepath: string) {
     // if file existed in base, create tombstone
     const entry = this.index.entries[filepath]
     const now = Date.now()
@@ -140,17 +140,17 @@ export class VirtualFS {
    * @param from 元パス
    * @param to 新パス
    */
-  async renameWorkspace(from: string, to: string) {
+  async renameFile(from: string, to: string) {
     // read content from workspace if present, otherwise from base
     const w = this.workspace.get(from)
     const content = w ? w.content : (this.base.get(from)?.content ?? null)
     if (content === null) throw new Error('source not found')
 
     // create new workspace entry
-    await this.writeWorkspace(to, content)
+    await this.writeFile(to, content)
 
     // delete original path (creates tombstone if base existed)
-    await this.deleteWorkspace(from)
+    await this.deleteFile(from)
   }
 
   /**
@@ -158,7 +158,7 @@ export class VirtualFS {
    * @param {string} filepath ファイルパス
    * @returns {Promise<string|null>} ファイル内容または null
    */
-  async readWorkspace(filepath: string) {
+  async readFile(filepath: string) {
     const w = this.workspace.get(filepath)
     if (w) return w.content
     // try workspace blob in backend first (read-through)
@@ -179,50 +179,71 @@ export class VirtualFS {
    * @returns {Promise<void>}
    */
   async applyBaseSnapshot(snapshot: Record<string, string>, headSha: string) {
-    // snapshot: path -> content
-    // Compute new shas and do a diff against current this.base to minimize writes/deletes
     const newShas: Record<string, string> = {}
-    for (const [p, c] of Object.entries(snapshot)) {
-      newShas[p] = await this.shaOf(c)
-    }
+    for (const [p, c] of Object.entries(snapshot)) newShas[p] = await this.shaOf(c)
 
-    // Determine added/changed/removed
-    const toAddOrUpdate: string[] = []
-    const toRemove: string[] = []
+    const toAddOrUpdate = this._computeToAddOrUpdate(snapshot, newShas)
+    const toRemove = this._computeToRemove(snapshot)
 
-    // check for adds/changes
-    for (const [p, c] of Object.entries(snapshot)) {
+    await this._applyRemovals(toRemove)
+    await this._applyAddsOrUpdates(toAddOrUpdate, snapshot, newShas)
+
+    this.index.head = headSha
+    await this.saveIndex()
+  }
+
+  /**
+   * 指定スナップショットから追加・更新対象のパス一覧を計算します。
+   * @param {Record<string,string>} snapshot path->content マップ
+   * @param {Record<string,string>} newShas path->sha マップ
+   * @returns {string[]} 追加/更新すべきパスの配列
+   */
+  private _computeToAddOrUpdate(snapshot: Record<string, string>, newShas: Record<string, string>) {
+    const out: string[] = []
+    for (const [p] of Object.entries(snapshot)) {
       const existing = this.base.get(p)
       const sha = newShas[p]
-      if (!existing) {
-        toAddOrUpdate.push(p)
-      } else if (existing.sha !== sha) {
-        toAddOrUpdate.push(p)
-      }
+      if (!existing || existing.sha !== sha) out.push(p)
     }
+    return out
+  }
+  /**
+   * 指定スナップショットから削除対象のパス一覧を計算します。
+   * @param {Record<string,string>} snapshot リモートの path->content マップ
+   * @returns {string[]} 削除すべきパスの配列
+   */
+  private _computeToRemove(snapshot: Record<string, string>) {
+    const out: string[] = []
+    for (const p of Array.from(this.base.keys())) if (!(p in snapshot)) out.push(p)
+    return out
+  }
 
-    // check for removals
-    for (const p of Array.from(this.base.keys())) {
-      if (!(p in snapshot)) toRemove.push(p)
-    }
-
-    // Apply removals first
+  /**
+   * 指定パス群を削除として backend に反映します。
+   * @param {string[]} toRemove 削除するパスの配列
+   * @returns {Promise<void>}
+   */
+  private async _applyRemovals(toRemove: string[]) {
     for (const p of toRemove) {
       this.base.delete(p)
-      // remove persisted base blob
       try {
         await this.backend.deleteBlob(`.git-base/${p}`)
       } catch (_) {
         // ignore backend errors
       }
-      // update index: if entry existed and was base-only, remove entry
       const ie = this.index.entries[p]
-      if (ie && ie.state === 'base') {
-        delete this.index.entries[p]
-      }
+      if (ie && ie.state === 'base') delete this.index.entries[p]
     }
+  }
 
-    // Apply adds/updates: write only changed content
+  /**
+   * 指定パス群を base に追加/更新し、backend に書き込みます。
+   * @param {string[]} toAddOrUpdate 追加/更新するパス
+   * @param {Record<string,string>} snapshot path->content マップ
+   * @param {Record<string,string>} newShas path->sha マップ
+   * @returns {Promise<void>}
+   */
+  private async _applyAddsOrUpdates(toAddOrUpdate: string[], snapshot: Record<string, string>, newShas: Record<string, string>) {
     for (const p of toAddOrUpdate) {
       const content = snapshot[p]
       const sha = newShas[p]
@@ -230,20 +251,25 @@ export class VirtualFS {
       try {
         await this.backend.writeBlob(`.git-base/${p}`, content)
       } catch (_) {
-        // ignore backend write failures for now
+        // ignore
       }
       const existing = this.index.entries[p]
-      if (!existing) {
-        this.index.entries[p] = { path: p, state: 'base', baseSha: sha, updatedAt: Date.now() }
-      } else if (existing.state === 'base') {
+      if (!existing) this.index.entries[p] = { path: p, state: 'base', baseSha: sha, updatedAt: Date.now() }
+      else if (existing.state === 'base') {
         existing.baseSha = sha
         existing.updatedAt = Date.now()
       }
     }
+  }
 
-    // Ensure index.head and save
-    this.index.head = headSha
-    await this.saveIndex()
+  /**
+   * 指定エラーが non-fast-forward を示すか判定します。
+   * @param {any} err 例外オブジェクト
+   * @returns {boolean}
+   */
+  private _isNonFastForwardError(err: any) {
+    const msg = String(err && err.message ? err.message : err)
+    return msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)
   }
 
   /**
@@ -443,26 +469,8 @@ export class VirtualFS {
    */
   private async _pushWithActions(adapter: any, input: any, branch: string) {
     const commitSha = await adapter.createCommitWithActions(branch, input.message, input.changes as any[])
-        if (typeof adapter.updateRef === 'function') {
-          try {
-            await adapter.updateRef(`heads/${branch}`, commitSha)
-          } catch (err: any) {
-            const msg = String(err && err.message ? err.message : err)
-            // If the error indicates a non-fast-forward (conflict), do NOT apply locally and
-            // surface an error to the caller requiring a pull.
-            if (msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)) {
-              throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
-            }
-            // For other transient/non-fatal errors, log and continue — still apply changes locally.
-            if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', err)
-          }
-        }
-    for (const ch of input.changes as any[]) {
-      await this._applyChangeLocally(ch)
-    }
-    this.index.head = commitSha
-    await this.saveIndex()
-    return { commitSha }
+    await this._tryUpdateRef(adapter, branch, commitSha)
+    return await this._applyChangesAndFinalize(commitSha, input)
   }
 
   /**
@@ -484,23 +492,66 @@ export class VirtualFS {
     }
     const treeSha = await adapter.createTree(changesWithBlob, baseTreeSha)
     const commitSha = await adapter.createCommit(input.message, input.parentSha, treeSha)
+    await this._tryUpdateRef(adapter, branch, commitSha)
+    return await this._applyChangesAndFinalize(commitSha, input)
+  }
+
+  /**
+   * Try to update remote ref and handle common non-fast-forward errors.
+   * Throws when the remote reports a non-fast-forward conflict.
+   */
+  private async _tryUpdateRef(adapter: any, branch: string, commitSha: string) {
     if (typeof adapter.updateRef === 'function') {
       try {
         await adapter.updateRef(`heads/${branch}`, commitSha)
       } catch (err: any) {
-        const msg = String(err && err.message ? err.message : err)
-        if (msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)) {
+        if (this._isNonFastForwardError(err)) {
           throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
         }
         if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', err)
       }
     }
+  }
+
+  /**
+   * Apply changes locally, update index head and persist index.
+   * Returns the commit result object for callers.
+   */
+  /**
+   * Apply changes locally, update index head and persist index.
+   * Returns the commit result object for callers.
+   * @returns {Promise<{commitSha:string}>}
+   */
+  private async _applyChangesAndFinalize(commitSha: string, input: any) {
     for (const ch of input.changes as any[]) {
       await this._applyChangeLocally(ch)
     }
     this.index.head = commitSha
     await this.saveIndex()
     return { commitSha }
+  }
+
+  /**
+   * Handle push when an adapter is provided (delegates to _pushWithActions/_pushWithGitHubFlow).
+   * Records commitKey in index metadata and returns the push result.
+   * @returns {Promise<{commitSha:string}>}
+   */
+  private async _handlePushWithAdapter(input: any, adapter: any) {
+    const branch = (input as any).ref || 'main'
+    const messageWithKey = `${input.message}\n\napigit-commit-key:${input.commitKey}`
+    // If adapter supports createCommitWithActions (GitLab style), use it directly
+    if ((adapter as any).createCommitWithActions) {
+      (input as any).message = messageWithKey
+      const res = await this._pushWithActions(adapter, input, branch)
+      this.index.lastCommitKey = input.commitKey
+      return res
+    }
+
+    // Fallback to GitHub-style flow
+    (input as any).message = messageWithKey
+    const res = await this._pushWithGitHubFlow(adapter, input, branch)
+    this.index.lastCommitKey = input.commitKey
+    return res
   }
 
   /**
@@ -562,26 +613,9 @@ export class VirtualFS {
     // ensure changes are present
     if (!input.changes || input.changes.length === 0) throw new Error('No changes to commit')
 
-    // If adapter provided, perform remote API reflect
+    // If adapter provided, perform remote API reflect via helper
     if (adapter) {
-      const branch = (input as any).ref || 'main'
-      const messageWithKey = `${input.message}\n\napigit-commit-key:${input.commitKey}`
-
-      // If adapter supports createCommitWithActions (GitLab style), use it directly
-      if ((adapter as any).createCommitWithActions) {
-        // ensure message contains commitKey
-        (input as any).message = messageWithKey
-        const res = await this._pushWithActions(adapter, input, branch)
-        // record commitKey in index metadata
-        this.index.lastCommitKey = input.commitKey
-        return res
-      }
-
-      // Fallback to GitHub-style flow: delegate to helper
-      (input as any).message = messageWithKey
-      const res = await this._pushWithGitHubFlow(adapter, input, branch)
-      this.index.lastCommitKey = input.commitKey
-      return res
+      return await this._handlePushWithAdapter(input, adapter)
     }
 
     // fallback: simulate commit locally

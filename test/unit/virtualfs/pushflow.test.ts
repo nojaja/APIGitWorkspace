@@ -15,7 +15,7 @@ describe('VirtualFS push flows', () => {
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
-    await vfs.writeWorkspace('a.txt', 'hello')
+    await vfs.writeFile('a.txt', 'hello')
     const changes = await vfs.getChangeSet()
 
     const adapter = {
@@ -56,7 +56,7 @@ describe('VirtualFS push flows', () => {
     const vfs = new VirtualFS({ backend: storage })
     await vfs.init()
 
-    await vfs.writeWorkspace('b.txt', 'world')
+    await vfs.writeFile('b.txt', 'world')
     const changes = await vfs.getChangeSet()
 
     const adapter = {

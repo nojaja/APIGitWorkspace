@@ -12,9 +12,9 @@ describe('VirtualFS constructor default and rename error', () => {
     expect(idx).toBeDefined()
   })
 
-  it('renameWorkspace throws when source not found', async () => {
+  it('renameFile throws when source not found', async () => {
     const vfs = new VirtualFS({ backend: new InMemoryStorage() })
     await vfs.init()
-    await expect(vfs.renameWorkspace('no-such.txt', 'x.txt')).rejects.toThrow('source not found')
+    await expect(vfs.renameFile('no-such.txt', 'x.txt')).rejects.toThrow('source not found')
   })
 })
