@@ -141,12 +141,11 @@ export class VirtualFS {
    * @param to 新パス
    */
   async renameFile(from: string, to: string) {
-    // read content from workspace if present, otherwise from base
-    const w = this.workspace.get(from)
-    const content = w ? w.content : (this.base.get(from)?.content ?? null)
+    // Use readFile to obtain actual content from workspace, backend blob, or base.
+    const content = await this.readFile(from)
     if (content === null) throw new Error('source not found')
 
-    // create new workspace entry
+    // create new workspace entry with the same content
     await this.writeFile(to, content)
 
     // delete original path (creates tombstone if base existed)
@@ -169,6 +168,17 @@ export class VirtualFS {
     if (baseBlob !== null) return baseBlob
     const b = this.base.get(filepath)
     if (b && b.content) return b.content
+    return null
+  }
+
+  /**
+   * リモート側の衝突ファイル（.git-conflict/配下）を取得します。
+   * @param {string} filepath ファイルパス
+   * @returns {Promise<string|null>} ファイル内容または null
+   */
+  async readRemoteFile(filepath: string) {
+    const blob = await this.backend.readBlob(`.git-conflict/${filepath}`)
+    if (blob !== null) return blob
     return null
   }
 
@@ -390,6 +400,13 @@ export class VirtualFS {
   private async _handleRemoteNew(p: string, remoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, localWorkspace: { sha: string; content: string } | undefined, localBase: { sha: string; content: string } | undefined) {
     if (localWorkspace) {
       // workspace has uncommitted changes -> conflict
+      // persist remote content for inspection under .git-conflict/
+      try {
+        const content = baseSnapshot[p]
+        if (content !== undefined) await this.backend.writeBlob(`.git-conflict/${p}`, content)
+      } catch (_) {
+        // ignore backend write errors
+      }
       conflicts.push({ path: p, remoteSha, workspaceSha: localWorkspace.sha, baseSha: localBase?.sha })
     } else {
       // safe to add to base
@@ -417,6 +434,13 @@ export class VirtualFS {
       await this.backend.writeBlob(`.git-base/${p}`, content)
     } else {
       // workspace modified -> conflict
+      // persist remote content for inspection under .git-conflict/
+      try {
+        const content = baseSnapshot[p]
+        if (content !== undefined) await this.backend.writeBlob(`.git-conflict/${p}`, content)
+      } catch (_) {
+        // ignore backend write errors
+      }
       conflicts.push({ path: p, baseSha, remoteSha, workspaceSha: localWorkspace?.sha })
     }
   }
@@ -443,6 +467,12 @@ export class VirtualFS {
         // ignore backend errors when cleaning workspace blob
       }
       this.workspace.delete(ch.path)
+      // cleanup any conflict blob for this path
+      try {
+        await this.backend.deleteBlob(`.git-conflict/${ch.path}`)
+      } catch (_) {
+        // ignore
+      }
     } else if (ch.type === 'delete') {
       delete this.index.entries[ch.path]
       this.base.delete(ch.path)
@@ -454,6 +484,12 @@ export class VirtualFS {
         // ignore backend errors when cleaning workspace blob
       }
       this.workspace.delete(ch.path)
+      // cleanup any conflict blob for this path
+      try {
+        await this.backend.deleteBlob(`.git-conflict/${ch.path}`)
+      } catch (_) {
+        // ignore
+      }
     }
   }
 

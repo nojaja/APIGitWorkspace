@@ -40,10 +40,15 @@ function renderUI() {
           <button id="pullRemote">リモート一覧を pull</button>
           <label>Remote Path: <input id="remotePath" style="width:420px" placeholder="path/to/file.txt"/></label>
           <button id="fetchRemoteFile">リモートファイルを fetch</button>
+            <button id="resolveWithLocal">ローカルファイルで競合解消</button>
+            <input type="file" id="localFileInput" style="display:none" />
           <button id="remoteChanges">リモートで新しいファイル一覧 (チェンジセット)</button>
           <button id="addLocalFile">ローカルにファイルを追加</button>
           <button id="localChanges">ローカルの変更一覧を表示</button>
           <button id="pushLocal">ローカルのチェンジセットを push</button>
+            <button id="editAndPush">既存ファイルを編集</button>
+            <button id="deleteAndPush">既存ファイルを削除</button>
+            <button id="renameAndPush">既存ファイルを名前変更</button>
           <button id="showSnapshot">スナップショット一覧表示</button>
       </section>
     </div>
@@ -330,6 +335,44 @@ async function main() {
     }
   })
 
+  // Resolve conflict by selecting a local file and writing it into the VFS, then simulate a local commit
+  const resolveWithLocalBtn = el('resolveWithLocal') as HTMLButtonElement
+  const localFileInput = el('localFileInput') as HTMLInputElement
+  resolveWithLocalBtn.addEventListener('click', () => {
+    if (!currentVfs) { appendOutput('先に VirtualFS を初期化してください'); return }
+    localFileInput.value = ''
+    localFileInput.click()
+  })
+
+  localFileInput.addEventListener('change', async () => {
+    try {
+      if (!currentVfs) { appendOutput('先に VirtualFS を初期化してください'); return }
+      const files = (localFileInput as HTMLInputElement).files
+      if (!files || files.length === 0) return
+      const file = files[0]
+      const content = await file.text()
+      const defaultPath = (el('remotePath') as HTMLInputElement).value.trim()
+      const path = defaultPath || prompt('保存先パスを入力してください（例: examples/file.txt）', file.name) || ''
+      if (!path) { appendOutput('保存先パスが指定されませんでした'); return }
+      await currentVfs.writeFile(path, content)
+      appendOutput(`ローカルファイルを読み込み、VFS に書き込みました: ${path}`)
+
+      // simulate committing locally to apply change and cleanup conflict blobs
+      try {
+        const changes = await currentVfs.getChangeSet()
+        if (!changes || changes.length === 0) { appendOutput('コミットする変更がありません'); return }
+        const idx = currentVfs.getIndex()
+        const input = { parentSha: idx.head || '', message: 'Resolve conflict via local file', changes }
+        const res = await currentVfs.push(input)
+        appendOutput('競合を解消してローカルコミットを適用しました: ' + JSON.stringify(res))
+      } catch (e) {
+        appendOutput('競合解消後のローカルコミットでエラー: ' + String(e))
+      }
+    } catch (e) {
+      appendOutput('localFileInput 処理で例外: ' + String(e))
+    }
+  })
+
   const remoteChangesBtn = el('remoteChanges') as HTMLButtonElement
   remoteChangesBtn.addEventListener('click', async () => {
     appendOutput('リモートとローカルの差分を取得します...')
@@ -396,6 +439,71 @@ async function main() {
       const res = await currentVfs.push(input, currentAdapter)
       appendOutput('push 成功: ' + JSON.stringify(res))
     } catch (e) { appendOutput('pushLocal 失敗: ' + String(e)) }
+  })
+
+  // --- Edit / Delete / Rename existing file and push to remote ---
+  const editAndPushBtn = el('editAndPush') as HTMLButtonElement
+  editAndPushBtn.addEventListener('click', async () => {
+    appendOutput('既存ファイルの編集 & push を開始します...')
+    if (!currentVfs) { appendOutput('先に VirtualFS を初期化してください'); return }
+    if (!currentAdapter) { appendOutput('先にアダプタを接続してください'); return }
+    try {
+      const defaultPath = (el('remotePath') as HTMLInputElement).value.trim()
+      const path = defaultPath || prompt('編集するファイルのパスを入力してください（例: examples/file.txt）') || ''
+      if (!path) return
+      const existing = await currentVfs.readFile(path)
+      const newContent = prompt('新しいファイル内容を入力してください', existing === null ? '' : String(existing))
+      if (newContent === null) return
+      await currentVfs.writeFile(path, newContent)
+      appendOutput(`ローカル編集しました: ${path}`)
+
+      const changes = await currentVfs.getChangeSet()
+      appendOutput('ローカル変更一覧 (編集後):\n' + JSON.stringify(changes, null, 2))
+    } catch (e) {
+      appendOutput('editAndPush 失敗: ' + String(e))
+    }
+  })
+
+  const deleteAndPushBtn = el('deleteAndPush') as HTMLButtonElement
+  deleteAndPushBtn.addEventListener('click', async () => {
+    appendOutput('既存ファイルの削除 & push を開始します...')
+    if (!currentVfs) { appendOutput('先に VirtualFS を初期化してください'); return }
+    if (!currentAdapter) { appendOutput('先にアダプタを接続してください'); return }
+    try {
+      const defaultPath = (el('remotePath') as HTMLInputElement).value.trim()
+      const path = defaultPath || prompt('削除するファイルのパスを入力してください（例: examples/file.txt）') || ''
+      if (!path) return
+      const ok = confirm(`本当に削除しますか: ${path}`)
+      if (!ok) return
+      await currentVfs.deleteFile(path)
+      appendOutput(`ローカルで削除しました（トゥームストーンまたはインデックスから除去）: ${path}`)
+
+      const changes = await currentVfs.getChangeSet()
+      appendOutput('ローカル変更一覧 (削除後):\n' + JSON.stringify(changes, null, 2))
+    } catch (e) {
+      appendOutput('deleteAndPush 失敗: ' + String(e))
+    }
+  })
+
+  const renameAndPushBtn = el('renameAndPush') as HTMLButtonElement
+  renameAndPushBtn.addEventListener('click', async () => {
+    appendOutput('既存ファイルの名前変更 & push を開始します...')
+    if (!currentVfs) { appendOutput('先に VirtualFS を初期化してください'); return }
+    if (!currentAdapter) { appendOutput('先にアダプタを接続してください'); return }
+    try {
+      const defaultFrom = (el('remotePath') as HTMLInputElement).value.trim()
+      const from = defaultFrom || prompt('変更元のファイルパスを入力してください（例: examples/old.txt）') || ''
+      if (!from) return
+      const to = prompt('新しいファイル名を入力してください（例: examples/new.txt）') || ''
+      if (!to) return
+      await currentVfs.renameFile(from, to)
+      appendOutput(`ローカルでリネームしました: ${from} -> ${to}`)
+
+      const changes = await currentVfs.getChangeSet()
+      appendOutput('ローカル変更一覧 (リネーム後):\n' + JSON.stringify(changes, null, 2))
+    } catch (e) {
+      appendOutput('renameAndPush 失敗: ' + String(e))
+    }
   })
 
   const showSnapshotBtn = el('showSnapshot') as HTMLButtonElement
