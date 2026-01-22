@@ -654,7 +654,7 @@ export class VirtualFS {
    * @returns {Promise<{commitSha:string}>}
    */
   private async _pushWithActions(adapter: any, input: any, branch: string) {
-    const commitSha = await adapter.createCommitWithActions(branch, input.message, input.changes as any[])
+    const commitSha = await adapter.createCommitWithActions(branch, input.message, input.changes as any[], input.parentSha)
     await this._tryUpdateRef(adapter, branch, commitSha)
     return await this._applyChangesAndFinalize(commitSha, input)
   }

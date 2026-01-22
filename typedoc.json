@@ -1,0 +1,31 @@
+{
+  "entryPoints": [
+    "src/"
+  ],
+  "out": "docs/typedoc-md",
+  "tsconfig": "tsconfig.json",
+  "excludePrivate": false,
+  "excludeProtected": false,
+  "entryPointStrategy": "expand",
+  "includeVersion": true,
+  "hideGenerator": false,
+  "theme": "markdown",
+  "plugin": ["typedoc-plugin-markdown"],
+  "externalSymbolLinkMappings": {
+    "@types/vscode": {
+      "\"vscode\".ThemeIcon": "#",
+      "\"vscode\".ThemeIcon.Folder": "#",
+      "\"vscode\".ThemeIcon.File": "#",
+      "\"vscode\".Uri": "#",
+      "\"vscode\".TreeItem.label": "#",
+      "\"vscode\".TreeItem.iconPath": "#",
+      "\"vscode\".Command": "#",
+      "\"vscode\".TreeItemCollapsibleState": "#",
+      "\"vscode\".TreeItemCheckboxState": "#",
+      "\"vscode\".TreeDataProvider.onDidChangeTreeData": "#",
+      "\"vscode\".TreeDragAndDropController.handleDrag": "#",
+      "\"vscode\".TreeDragAndDropController.handleDrop": "#",
+      "\"vscode\".DataTransferFile": "#"
+    }
+  }
+}

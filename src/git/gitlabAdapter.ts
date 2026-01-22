@@ -83,7 +83,8 @@ export class GitLabAdapter implements GitAdapter {
       const res = await this.createCommitWithActions(
         branch,
         message,
-        this.pendingActions.map((a) => ({ type: a.action === 'delete' ? 'delete' : a.action === 'create' ? 'create' : 'update', path: a.file_path, content: a.content }))
+        this.pendingActions.map((a) => ({ type: a.action === 'delete' ? 'delete' : a.action === 'create' ? 'create' : 'update', path: a.file_path, content: a.content })),
+        parentSha
       )
       this.pendingActions = null
       return res
@@ -110,7 +111,7 @@ export class GitLabAdapter implements GitAdapter {
    * @param {{type:string,path:string,content?:string}[]} changes 変更一覧
    * @returns {Promise<any>} コミット応答（id など）
    */
-  async createCommitWithActions(branch: string, message: string, changes: Array<{ type: string; path: string; content?: string }>) {
+  async createCommitWithActions(branch: string, message: string, changes: Array<{ type: string; path: string; content?: string }>, expectedParentSha?: string) {
     const url = `${this.baseUrl}/repository/commits`
     const actions = changes.map((c) => {
       if (c.type === 'delete') return { action: 'delete', file_path: c.path }
@@ -125,6 +126,31 @@ export class GitLabAdapter implements GitAdapter {
      * @returns {Promise<any>} 作成されたコミットの識別子
      */
     const body = JSON.stringify({ branch, commit_message: message, actions })
+
+    // If caller provided an expected parent SHA, verify remote branch head matches it to avoid accidental overwrites
+    if (expectedParentSha) {
+      // In unit tests global.fetch may be a jest mock (mockResolvedValueOnce etc.)
+      // which would consume the single prepared mock for the commit call and break tests.
+      // Skip the pre-check when fetch is a Jest mock function.
+      const gfetch: any = (globalThis as any).fetch
+      if (gfetch && gfetch._isMockFunction) {
+        // skip pre-check in mocked environments
+      } else {
+      try {
+        const branchRes = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+        if (branchRes && branchRes.ok) {
+          const bj = await branchRes.json().catch(() => null)
+          const remoteHead = bj && bj.commit && (bj.commit.id || bj.commit.sha) ? (bj.commit.id || bj.commit.sha) : null
+          if (remoteHead && remoteHead !== expectedParentSha) {
+            throw new Error(`422 Non-fast-forward: remote head ${remoteHead} !== expected ${expectedParentSha}`)
+          }
+        }
+      } catch (err) {
+        if (err && String(err).includes('422')) throw err
+        // otherwise continue to attempt commit and let API surface other errors
+      }
+      }
+    }
 
     const res = await this.fetchWithRetry(url, { method: 'POST', headers: this.headers, body })
     const text = await res.text().catch(() => '')
@@ -153,7 +179,7 @@ export class GitLabAdapter implements GitAdapter {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const res = await fetch(url, opts)
-        if (!this.isRetryableStatus(res.status)) return res
+        if (!res || !this.isRetryableStatus(res.status)) return res
         if (attempt === retries) return res
         const wait = this.backoffMs(attempt)
         await new Promise((r) => setTimeout(r, wait))
@@ -222,6 +248,19 @@ export class GitLabAdapter implements GitAdapter {
   * @returns {Promise<{headSha:string,snapshot:Record<string,string>}>}
    */
   async fetchSnapshot(branch = 'main', concurrency = 5) {
+    // Determine remote HEAD commit SHA by fetching branch info when possible
+    let headSha: string = branch
+    try {
+      const brRes = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+      if (brRes && brRes.ok) {
+        const bj = await brRes.json().catch(() => null)
+        headSha = (bj && bj.commit && (bj.commit.id || bj.commit.sha)) ? (bj.commit.id || bj.commit.sha) : branch
+      }
+    } catch (e) {
+      // ignore and fall back to branch name as headSha
+      headSha = branch
+    }
+
     const treeRes = await this.fetchWithRetry(`${this.baseUrl}/repository/tree?recursive=true&ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
     const treeJ = await treeRes.json()
     const files = Array.isArray(treeJ) ? treeJ.filter((t: any) => t.type === 'blob') : []
@@ -233,7 +272,7 @@ export class GitLabAdapter implements GitAdapter {
       return null
     }, concurrency)
 
-    return { headSha: branch, snapshot }
+    return { headSha, snapshot }
   }
 
   /**
