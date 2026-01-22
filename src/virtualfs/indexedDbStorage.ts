@@ -173,12 +173,21 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
   async readBlob(filepath: string): Promise<string | null> {
     const db = await this.dbPromise
     // Try primary key, then common fallbacks for workspace/.git-base/.git-conflict
+    /**
+     * 指定キーから blob を取得する小さなヘルパ
+     * @param {string} key 対象キー
+     * @returns {Promise<string|null>} 取得した文字列または null
+     */
     const tryGet = (key: string) => new Promise<string | null>((resolve, reject) => {
       const tx = db.transaction('blobs', 'readonly')
       const store = tx.objectStore('blobs')
       const req = store.get(key)
-      req.onsuccess = () => resolve(req.result ?? null)
-      req.onerror = () => reject(req.error)
+      /** 成功ハンドラ */
+      function handleTryGetSuccess() { resolve(req.result ?? null) }
+      /** エラーハンドラ */
+      function handleTryGetError() { reject(req.error) }
+      req.onsuccess = handleTryGetSuccess
+      req.onerror = handleTryGetError
     })
 
     try {

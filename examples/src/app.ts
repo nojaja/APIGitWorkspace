@@ -24,6 +24,13 @@ function renderUI() {
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
         <label>Repository URL: <input id="repoInput" style="width:420px" placeholder="https://github.com/owner/repo"/></label>
         <label>Token: <input id="tokenInput" style="width:300px" placeholder="ghp_xxx or glpat_xxx"/></label>
+        <label>Platform: 
+          <select id="platformSelect" style="width:140px">
+            <option value="auto">auto</option>
+            <option value="github">github</option>
+            <option value="gitlab">gitlab</option>
+          </select>
+        </label>
         <button id="connectBtn">接続してインスタンス作成</button>
       </div>
 
@@ -65,12 +72,14 @@ async function main() {
   const connectBtn = el('connectBtn') as HTMLButtonElement
   const repoInput = el('repoInput') as HTMLInputElement
   const tokenInput = el('tokenInput') as HTMLInputElement
+  const platformSelect = el('platformSelect') as HTMLSelectElement
 
-  // GETパラメータから repo / token をプリセットする (例: ?repo=https://github.com/owner/repo&token=xxx)
+  // GETパラメータから repo / token / platform をプリセットする (例: ?repo=https://github.com/owner/repo&token=xxx&platform=gitlab)
   try {
     const params = new URLSearchParams(location.search)
     const repoParam = (params.get('repo') || '').trim()
     const tokenParam = (params.get('token') || '').trim()
+    const platformParam = (params.get('platform') || '').trim()
     if (repoParam) {
       repoInput.value = repoParam
       appendOutput('GETパラメータから repo を設定しました: ' + repoParam)
@@ -79,12 +88,21 @@ async function main() {
       tokenInput.value = tokenParam
       appendOutput('GETパラメータから token を設定しました: ' + (tokenParam ? '***' : '<未入力>'))
     }
+    if (platformParam) {
+      // validate value
+      if (['auto', 'github', 'gitlab'].includes(platformParam)) {
+        platformSelect.value = platformParam
+        appendOutput('GETパラメータから platform を設定しました: ' + platformParam)
+      } else {
+        appendOutput('GETパラメータの platform が無効です: ' + platformParam)
+      }
+    }
   } catch (e) {
     appendOutput('GETパラメータ解析で例外: ' + String(e))
   }
 
   // 入力が変更されたら URL の GET パラメータを同期する
-  function syncUrlParams(repoVal: string, tokenVal: string) {
+  function syncUrlParams(repoVal: string, tokenVal: string, platformVal?: string) {
     try {
       const u = new URL(location.href)
       const p = u.searchParams
@@ -92,6 +110,10 @@ async function main() {
       else p.delete('repo')
       if (tokenVal) p.set('token', tokenVal)
       else p.delete('token')
+      if (typeof platformVal !== 'undefined') {
+        if (platformVal) p.set('platform', platformVal)
+        else p.delete('platform')
+      }
       const qs = p.toString()
       const newUrl = u.pathname + (qs ? '?' + qs : '') + u.hash
       history.replaceState(null, '', newUrl)
@@ -102,10 +124,13 @@ async function main() {
   }
 
   repoInput.addEventListener('input', () => {
-    syncUrlParams((repoInput.value || '').trim(), (tokenInput.value || '').trim())
+    syncUrlParams((repoInput.value || '').trim(), (tokenInput.value || '').trim(), (platformSelect.value || '').trim())
   })
   tokenInput.addEventListener('input', () => {
-    syncUrlParams((repoInput.value || '').trim(), (tokenInput.value || '').trim())
+    syncUrlParams((repoInput.value || '').trim(), (tokenInput.value || '').trim(), (platformSelect.value || '').trim())
+  })
+  platformSelect.addEventListener('change', () => {
+    syncUrlParams((repoInput.value || '').trim(), (tokenInput.value || '').trim(), (platformSelect.value || '').trim())
   })
 
   // Use the bundled library at build time. This replaces runtime dynamic loading.
@@ -132,46 +157,93 @@ async function main() {
     appendOutput(`入力: repo=${repo || '<未入力>'} token=${token ? '***' : '<未入力>'}`)
 
     try {
-      // GitHub: https://github.com/owner/repo
-      const ghMatch = repo.match(/^https?:\/\/(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)/i)
-      if (ghMatch && lib.GitHubAdapter) {
-        const owner = ghMatch[1]
-        const repoName = ghMatch[2]
-        currentPlatform = 'github'
-        currentOwner = owner
-        currentRepoName = repoName
-        try {
-          const gh = new lib.GitHubAdapter({ owner, repo: repoName, token })
-          currentAdapter = gh
-          appendOutput('GitHubAdapter 作成: ' + gh.constructor.name)
-        } catch (e) {
-          appendOutput('GitHubAdapter の初期化で例外: ' + String(e))
-        }
-        // NOTE: manual GitHub API fetch removed — UI uses library adapters only
+      // Parse URL to support self-hosted instances as well as github.com/gitlab.com
+      let parsed: URL | null = null
+      try {
+        parsed = new URL(repo)
+      } catch (err) {
+        parsed = null
       }
 
-      // GitLab: https://gitlab.com/namespace/project
-      const glMatch = repo.match(/^https?:\/\/(?:www\.)?gitlab\.com\/(.+?)\/(.+?)(?:$|\/)*/i)
-      if (glMatch && lib.GitLabAdapter) {
-        const owner = glMatch[1]
-        const repoName = glMatch[2]
-        currentPlatform = 'gitlab'
-        currentOwner = owner
-        currentRepoName = repoName
-        try {
-          // GitLabAdapter expects projectId (namespace/project)
-          const projectId = `${owner}/${repoName}`
-          const gl = new lib.GitLabAdapter({ projectId, token })
-          currentAdapter = gl
-          appendOutput('GitLabAdapter 作成: ' + gl.constructor.name)
-        } catch (e) {
-          appendOutput('GitLabAdapter の初期化で例外: ' + String(e))
-        }
-        // NOTE: manual GitLab API fetch removed — UI uses library adapters only
+      if (!parsed) {
+        appendOutput('無効な URL です。例: https://github.com/owner/repo')
+        return
       }
 
-      if (!ghMatch && !glMatch) {
-        appendOutput('対応しているリポジトリ URL ではありません（github.com または gitlab.com）')
+      // Normalize path segments and strip trailing .git
+        const path = parsed.pathname.replace(/(^\/+|\/+$)/g, '')
+      const rawSegments = path ? path.split('/') : []
+      const segments = rawSegments.map((s) => s.replace(/\.git$/i, ''))
+
+      // Heuristics to choose platform:
+      // - hostname contains 'gitlab' => GitLab
+      // - hostname contains 'github' => GitHub
+      // - token prefix 'glpat_' => GitLab, 'ghp_' => GitHub
+      // - nested path (>=3 segments) => likely GitLab (groups/subgroups)
+      // - otherwise (2 segments) => GitHub by default
+      const hostname = (parsed.hostname || '').toLowerCase()
+      const tokenHint = (token || '')
+      let chosen: 'github' | 'gitlab' | null = null
+      // If user explicitly selected platform, respect it
+      const platformOverride = (platformSelect && platformSelect.value) ? (platformSelect.value as string) : 'auto'
+      if (platformOverride === 'github' || platformOverride === 'gitlab') {
+        chosen = platformOverride as 'github' | 'gitlab'
+      } else {
+        if (hostname.includes('gitlab')) chosen = 'gitlab'
+        else if (hostname.includes('github')) chosen = 'github'
+        else if (tokenHint.startsWith('glpat_')) chosen = 'gitlab'
+        else if (tokenHint.startsWith('ghp_')) chosen = 'github'
+        else if (segments.length >= 3) chosen = 'gitlab'
+        else if (segments.length === 2) chosen = 'github'
+      }
+
+      if (chosen === 'github' && lib.GitHubAdapter) {
+        const owner = segments[0] || ''
+        const repoName = segments[1] || ''
+        if (!owner || !repoName) {
+          appendOutput('GitHub 用の owner/repo が URL から取得できませんでした')
+        } else {
+          currentPlatform = 'github'
+          currentOwner = owner
+          currentRepoName = repoName
+          try {
+            // For GitHub Enterprise/self-hosted, prefer API base at origin + '/api/v3'
+            let hostForApi: string | undefined = undefined
+            if (!/github\.com$/i.test(hostname)) {
+              // assume enterprise => use API v3 path
+              hostForApi = `${parsed.protocol}//${parsed.host}/api/v3`
+            }
+            const ghOpts: any = { owner, repo: repoName, token }
+            if (hostForApi) ghOpts.host = hostForApi
+            const gh = new lib.GitHubAdapter(ghOpts)
+            currentAdapter = gh
+            appendOutput('GitHubAdapter 作成: ' + gh.constructor.name)
+          } catch (e) {
+            appendOutput('GitHubAdapter の初期化で例外: ' + String(e))
+          }
+        }
+      } else if (chosen === 'gitlab' && lib.GitLabAdapter) {
+        if (segments.length < 2) {
+          appendOutput('GitLab 用の namespace/project が URL から取得できませんでした')
+        } else {
+          // projectId should be full namespace path (group[/subgroup]/project)
+          const projectId = segments.join('/')
+          currentPlatform = 'gitlab'
+          currentOwner = segments.slice(0, -1).join('/') || null
+          currentRepoName = segments[segments.length - 1] || null
+          try {
+            const glOpts: any = { projectId, token }
+            // For self-hosted GitLab, use origin as host so GitLabAdapter will append /api/v4
+            if (!/gitlab\.com$/i.test(hostname)) glOpts.host = `${parsed.protocol}//${parsed.host}`
+            const gl = new lib.GitLabAdapter(glOpts)
+            currentAdapter = gl
+            appendOutput('GitLabAdapter 作成: ' + gl.constructor.name)
+          } catch (e) {
+            appendOutput('GitLabAdapter の初期化で例外: ' + String(e))
+          }
+        }
+      } else {
+        appendOutput('対応しているリポジトリ URL ではありません（GitHub/GitLab の形式を指定してください）')
       }
     } catch (e) {
       appendOutput('接続処理で例外: ' + String(e))
