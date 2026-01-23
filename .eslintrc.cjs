@@ -30,7 +30,7 @@ module.exports = {
     sourceType: 'module',
     project: './tsconfig.json'
   },
-  plugins: ['sonarjs', 'jsdoc', '@typescript-eslint'],
+  plugins: ['sonarjs', 'jsdoc', '@typescript-eslint', 'unicorn'],
   ignorePatterns: ['dist/', 'node_modules/'],
   rules: {
     'sonarjs/cognitive-complexity': ['error', 10],
@@ -56,5 +56,10 @@ module.exports = {
     // 指定環境での eslint-plugin-jsdoc の AST 問題対応のため一時的に param チェックを無効化
     'jsdoc/require-param': 'off',
     'jsdoc/require-returns': 'error'
+    // Unicorn: 早期リターン・重複分岐検出・ファイル名規約・略語抑制
+    , 'unicorn/prefer-early-return': 'warn'
+    , 'unicorn/no-duplicated-branches': 'warn'
+    , 'unicorn/filename-case': ['warn', { case: 'camelCase' }]
+    , 'unicorn/prevent-abbreviations': 'warn'
   }
 }
