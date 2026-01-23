@@ -326,7 +326,8 @@ async function main() {
         appendOutput('[fetchRemoteBtn]リモート先頭ファイル: ' + first.join(', '))
         if (remotePaths.length > 20) appendOutput(`[fetchRemoteBtn]... 他 ${remotePaths.length - 20} 件`) 
       }
-      const preIndexKeys = Object.keys(currentVfs.getIndex().entries)
+      const preIndex = await currentVfs.getIndex()
+      const preIndexKeys = Object.keys(preIndex.entries)
       const res = await currentVfs.pull(data)
       const fetchedPaths = (res as any).fetchedPaths || []
       const reconciledPaths = (res as any).reconciledPaths || []
@@ -379,7 +380,7 @@ async function main() {
       }
 
       try {
-        const postIndex = currentVfs.getIndex()
+        const postIndex = await currentVfs.getIndex()
         const postKeys = Object.keys(postIndex.entries)
         // newly added index entries
         const preSet = new Set(preIndexKeys)
@@ -431,7 +432,7 @@ async function main() {
         appendOutput('[remoteChangesBtn]アダプタに fetchSnapshot() が実装されていません'); return
       }
       const remoteShas: Record<string,string> = data.shas || {}
-      const idx = currentVfs.getIndex()
+      const idx = await currentVfs.getIndex()
       const diffs: string[] = []
       for (const [p, sha] of Object.entries(remoteShas)) {
         const entry = idx.entries[p]
@@ -474,7 +475,7 @@ async function main() {
     try {
       const changes = await currentVfs.getChangeSet()
       if (!changes || changes.length === 0) { appendOutput('[pushLocalBtn]Push する変更がありません'); return }
-      const idx = currentVfs.getIndex()
+      const idx = await currentVfs.getIndex()
       const input = { parentSha: idx.head || '', message: 'Example push from UI', changes }
       const res = await currentVfs.push(input, currentAdapter)
       appendOutput('[pushLocalBtn]push 成功: ' + JSON.stringify(res))

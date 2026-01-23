@@ -68,33 +68,35 @@ import { OpfsStorage } from '../../../src/virtualfs/opfsStorage'
 
 describe('OpfsStorage OPFS direct (truthy getFileHandle) path', () => {
   it('writeBlob/readBlob via OPFS success path', async () => {
-    const files = new Map<string, string>()
+    const allFiles = new Map<string, string>()
+    
     /** @returns {{getDirectory: (name:string)=>Promise<any>, getFileHandle: (name:string, opts?:any)=>Promise<any>}} */
-    const makeDir = (map: Map<string, any>) => ({
+    const makeDir = (pathPrefix: string, map: Map<string, any>) => ({
       /** @returns {Promise<any>} */
       getDirectory: async (name: string) => {
-        if (!map.has(name)) map.set(name, makeDir(new Map()))
+        const newPrefix = pathPrefix ? `${pathPrefix}/${name}` : name
+        if (!map.has(name)) map.set(name, makeDir(newPrefix, new Map()))
         return map.get(name)
       },
       /** @returns {Promise<any>} */
       getFileHandle: async (name: string, opts?: any) => {
-        const key = name
+        const fullKey = pathPrefix ? `${pathPrefix}/${name}` : name
         return {
           /** @returns {Promise<{write:(content:string)=>Promise<void>,close:()=>Promise<void>}>>} */
           createWritable: async () => ({
             /** @returns {Promise<void>} */
-            write: async (content: string) => { files.set(key, content) },
+            write: async (content: string) => { allFiles.set(fullKey, content) },
             /** @returns {Promise<void>} */
             close: async () => {}
           }),
           /** @returns {Promise<{text:()=>Promise<string|undefined>}>} */
           getFile: async () => ({ /** @returns {Promise<string|undefined>} */
-          text: async () => files.get(key) })
+          text: async () => allFiles.get(fullKey) })
         }
       }
     })
 
-    const root = makeDir(new Map())
+    const root = makeDir('', new Map())
     // mock navigator.storage to indicate persistence and provide getDirectory
     ;(globalThis as any).navigator = (globalThis as any).navigator || {}
     ;(navigator as any).storage = {

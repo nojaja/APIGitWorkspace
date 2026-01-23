@@ -43,9 +43,9 @@ describe('VirtualFS push flows', () => {
       updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
     }
 
-    const res = await vfs.push({ parentSha: vfs.getIndex().head, message: 'm', changes }, adapter as any)
+    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm', changes }, adapter as any)
     expect(res.commitSha).toBe('commit-github')
-    expect(vfs.getIndex().head).toBe('commit-github')
+    expect((await vfs.getIndex()).head).toBe('commit-github')
 
     const blob = await storage.readBlob('a.txt')
     expect(blob).toBe('hello')
@@ -70,9 +70,9 @@ describe('VirtualFS push flows', () => {
       updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
     }
 
-    const res = await vfs.push({ parentSha: vfs.getIndex().head, message: 'm2', changes, ref: 'main' }, adapter as any)
+    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm2', changes, ref: 'main' }, adapter as any)
     expect(res.commitSha).toBe('commit-actions')
-    expect(vfs.getIndex().head).toBe('commit-actions')
+    expect((await vfs.getIndex()).head).toBe('commit-actions')
 
     const blob = await storage.readBlob('b.txt')
     expect(blob).toBe('world')

@@ -7,8 +7,10 @@ describe('promoteResolvedConflicts', () => {
     const vfs = new VirtualFS({ backend: storage })
     // prepare index entry with matching baseSha and remoteSha
     const path = 'file.txt'
-    const sha = 'sha1'
-    vfs.getIndex().entries[path] = { path, state: 'conflict', baseSha: sha, remoteSha: sha, updatedAt: Date.now() } as any
+    const shaValue = 'sha1'
+    const entry = { path, state: 'conflict', baseSha: shaValue, remoteSha: shaValue, updatedAt: Date.now() }
+    // write entry to backend info segment
+    await storage.writeBlob(path, JSON.stringify(entry), 'info')
 
     const conflicts = [{ path }]
     const snapshot: Record<string, string> = { [path]: 'content' }
@@ -16,10 +18,10 @@ describe('promoteResolvedConflicts', () => {
 
     await (vfs as any)._promoteResolvedConflicts(conflicts, snapshot, remoteHead)
 
-    const ie = vfs.getIndex().entries[path]
+    const ie = (await vfs.getIndex()).entries[path]
     expect(ie.state).toBe('base')
-    expect(ie.baseSha).toBe(sha)
-    expect(vfs.getIndex().head).toBe(remoteHead)
+    expect(ie.baseSha).toBe(shaValue)
+    expect((await vfs.getIndex()).head).toBe(remoteHead)
     // backend should have .git-base blob
     expect(await storage.readBlob(path,'base')).toBe('content')
   })

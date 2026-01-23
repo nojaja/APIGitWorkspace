@@ -8,7 +8,7 @@ describe('VirtualFS constructor default and rename error', () => {
     // init should not throw
     await expect(vfs.init()).resolves.toBeUndefined()
     // getIndex should be available
-    const idx = vfs.getIndex()
+    const idx = await vfs.getIndex()
     expect(idx).toBeDefined()
   })
 

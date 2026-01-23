@@ -3,7 +3,7 @@ import { IndexFile } from './types'
 /**
  * Storage セグメント
  */
-export type Segment = 'workspace' | 'base' | 'conflict'
+export type Segment = 'workspace' | 'base' | 'conflict' | 'info'
 
 /**
  * 永続化レイヤーの抽象インターフェース
@@ -49,6 +49,15 @@ export interface StorageBackend {
    * @returns {Promise<void>}
    */
   deleteBlob(_filepath: string, _segment?: Segment): Promise<void>
+
+  /**
+   * 指定プレフィックス配下のファイル一覧を取得します。
+   * @param prefix 取得対象のディレクトリプレフィックス（省略時はルート）
+   * @param segment 取得対象セグメント（省略時は 'workspace'）
+   * @param recursive サブディレクトリも含める場合は true（デフォルト true）
+   * @returns Promise<Array<{path:string, info:string|null}>>
+   */
+  listFiles(_prefix?: string, _segment?: Segment, _recursive?: boolean): Promise<Array<{ path: string; info: string | null }>>
 }
 
 /**
@@ -60,7 +69,7 @@ export interface StorageBackendConstructor {
    * コンストラクタ。ルートパスやDB名などのオプション引数を受け取れるようにする。
    * 実装側はこの引数を利用して初期化を行うことができます。
    */
-  new (root?: string): StorageBackend
+  new (_root?: string): StorageBackend
   /**
    * このストレージ実装が利用可能かどうかを返す（例: 環境依存のチェック）。
    */

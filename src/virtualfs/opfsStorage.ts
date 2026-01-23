@@ -5,6 +5,7 @@ const ERR_OPFS_DIR_API = 'OPFS directory API not available'
 const VAR_WORKSPACE = 'workspace'
 const VAR_BASE = '.git-base'
 const VAR_CONFLICT = '.git-conflict'
+const VAR_INFO = '.git-info'
 
 /** OPFS (origin private file system) を利用する永続化実装 */
 export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implements StorageBackend {
@@ -14,14 +15,11 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    */
   static canUse(): boolean {
     let ok = false
-    try {
-      const nav = (globalThis as any).navigator
-      // If navigator.storage.persist exists, treat as OPFS-capable hint (legacy detection)
-      if (nav && nav.storage && typeof nav.storage.persist === 'function') ok = true
-      if (nav && nav.storage && typeof nav.storage.getDirectory === 'function') ok = true
-    } catch (_) {
-      void 0
-    }
+    const nav = (globalThis as any).navigator
+    // If navigator.storage.persist exists, treat as OPFS-capable hint (legacy detection)
+    if (nav && nav.storage && typeof nav.storage.persist === 'function') ok = true
+    if (nav && nav.storage && typeof nav.storage.getDirectory === 'function') ok = true
+
     if (!ok && (globalThis as any).originPrivateFileSystem && typeof (globalThis as any).originPrivateFileSystem.getDirectory === 'function') ok = true
     return ok
   }
@@ -43,6 +41,19 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
 
   private rootDir = 'apigit_storage'
 
+  /**
+   * Calculate SHA-1 hex digest of given content.
+   * @param content Input string
+   * @returns {Promise<string>} Hex encoded SHA-1 digest
+   */
+  private async shaOf(content: string): Promise<string> {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(content)
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+  }
+
   /** コンストラクタ（OPFS は初期化不要）。`root` は OPFS ルート直下に作成するサブディレクトリ名です。 */
   constructor(root?: string) {
     if (root) this.rootDir = root
@@ -63,22 +74,29 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * @returns {Promise<any|null>} ルートハンドルまたは null
    */
   private async getOpfsRoot(): Promise<any | null> {
-    const nav = (globalThis as any).navigator
-    if (nav && nav.storage && typeof nav.storage.getDirectory === 'function') {
-      try {
-        return await nav.storage.getDirectory()
-      } catch (_) {
-        // fallthrough to originPrivateFileSystem
-      }
-    }
     try {
-      if ((globalThis as any).originPrivateFileSystem && typeof (globalThis as any).originPrivateFileSystem.getDirectory === 'function') {
-        return await (globalThis as any).originPrivateFileSystem.getDirectory()
+      const nav = (globalThis as any).navigator
+      if (nav && nav.storage && typeof nav.storage.getDirectory === 'function') {
+        try {
+          const maybe = nav.storage.getDirectory()
+          const d = await Promise.resolve(maybe)
+          if (d) return d
+        } catch (err) {
+          // fallthrough to originPrivateFileSystem or null
+        }
       }
-    } catch (_) {
+
+      if ((globalThis as any).originPrivateFileSystem && typeof (globalThis as any).originPrivateFileSystem.getDirectory === 'function') {
+        try {
+          return await (globalThis as any).originPrivateFileSystem.getDirectory()
+        } catch (err) {
+          return null
+        }
+      }
+      return null
+    } catch (err) {
       return null
     }
-    return null
   }
 
   /**
@@ -107,30 +125,57 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     try {
       const root = await this.getOpfsRoot()
       if (!root) return null
-      // If root exposes directory API, read from scoped subdir; otherwise operate on root directly
-      const hasDirApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
-      if (hasDirApi) {
-        try {
+
+      // Read index metadata (head, lastCommitKey) from 'index' file if present
+      let metaTxt: string | null = null
+      try {
+        const hasDirApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
+        if (hasDirApi) {
           const scoped = await this.traverseDir(root, this.rootDir.split('/').filter(Boolean))
           const fh = await scoped.getFileHandle('index')
           const file = await fh.getFile()
-          const txt = await file.text()
-          return txt ? (JSON.parse(txt) as IndexFile) : null
-        } catch (_) {
-          return null
+          metaTxt = await file.text()
+        } else {
+          const fh = await (root as any).getFileHandle('index')
+          const file = await fh.getFile()
+          metaTxt = await file.text()
         }
-      }
-      // fallback: root supports getFileHandle directly
-      try {
-        const fh = await (root as any).getFileHandle('index')
-        const file = await fh.getFile()
-        const txt = await file.text()
-        return txt ? (JSON.parse(txt) as IndexFile) : null
       } catch (_) {
-        return null
+        metaTxt = null
       }
+
+      const result: IndexFile = { head: '', entries: {} }
+      if (metaTxt) {
+        const parsed = JSON.parse(metaTxt) as any
+        result.head = parsed.head || ''
+        if (parsed.lastCommitKey) result.lastCommitKey = parsed.lastCommitKey
+      }
+
+      // Reconstruct entries by reading all files under the 'info' segment
+      await this._readInfoEntries(root, result)
+
+      return result
     } catch (_) {
-      return null
+      return { head: '', entries: {} }
+    }
+  }
+
+  /**
+   * Read all info entries under VAR_INFO and populate the given IndexFile.entries map.
+   * @returns {Promise<void>}
+   */
+  private async _readInfoEntries(root: any, result: IndexFile): Promise<void> {
+    const infoFiles = await this.listFilesAtPrefix(root, VAR_INFO).catch(() => [])
+    for (const fp of infoFiles) {
+      const txt = await this.readBlob(fp, 'info')
+      if (!txt) continue
+      try {
+        const entry = JSON.parse(txt) as any
+        result.entries[fp] = entry
+      } catch (err) {
+        // ignore malformed info entry
+        continue
+      }
     }
   }
 
@@ -141,20 +186,34 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   async writeIndex(index: IndexFile): Promise<void> {
     const root = await this.getOpfsRoot()
     if (!root) throw new Error('OPFS not available')
+
+    // Write each entry separately to the 'info' segment
+    const entries = index.entries || {}
+    for (const filepath of Object.keys(entries)) {
+      const entry = entries[filepath]
+      // store each IndexEntry JSON under segment 'info' using the filepath as key
+      await this.writeBlob(filepath, JSON.stringify(entry), 'info')
+    }
+
+    // Persist index metadata (without entries) as before
+    const meta: any = { head: index.head }
+    if (index.lastCommitKey) meta.lastCommitKey = index.lastCommitKey
+
     const hasDirApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
+    const payload = JSON.stringify(meta)
     if (hasDirApi) {
       const parts = this.rootDir.split('/').filter(Boolean)
       const parent = await this.ensureDir(root, parts)
       const fh = await parent.getFileHandle('index', { create: true })
       const writable = await fh.createWritable()
-      await writable.write(JSON.stringify(index))
+      await writable.write(payload)
       await writable.close()
       return
     }
     // fallback: root supports getFileHandle directly
     const fh = await (root as any).getFileHandle('index', { create: true })
     const writable = await fh.createWritable()
-    await writable.write(JSON.stringify(index))
+    await writable.write(payload)
     await writable.close()
   }
 
@@ -162,12 +221,79 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * blob を書き込む
    * @returns {Promise<void>} 書込完了時に解決
    */
-  async writeBlob(filepath: string, content: string, segment?: any): Promise<void> {
-    const seg = segment || VAR_WORKSPACE
+  async writeBlob(filepath: string, content: string, segment?: 'workspace' | 'base' | 'conflict' | 'info'): Promise<void> {
+    const seg: 'workspace' | 'base' | 'conflict' | 'info' = segment ?? 'workspace'
     const root = await this.getOpfsRoot()
     if (!root) throw new Error('OPFS not available')
-    const prefix = seg === VAR_WORKSPACE ? VAR_WORKSPACE : seg === 'base' ? VAR_BASE : VAR_CONFLICT
+    const prefix = seg === 'workspace' ? VAR_WORKSPACE : seg === 'base' ? VAR_BASE : seg === 'info' ? VAR_INFO : VAR_CONFLICT
+    // write actual blob
     await this._writeToPrefix(root, prefix, filepath, content)
+
+    // if writing to info segment itself, do not create recursive info entry
+    if (seg === 'info') return
+
+    // create/update corresponding info entry summarizing this file
+    const sha = await this.shaOf(content)
+    const now = Date.now()
+    await this._updateInfoForWrite(root, seg, filepath, sha, now)
+  }
+
+  /**
+   * Build and persist info metadata for a file written to a segment.
+   * @returns {Promise<void>}
+   */
+  private async _updateInfoForWrite(root: any, seg: 'workspace' | 'base' | 'conflict' | 'info', filepath: string, sha: string, now: number): Promise<void> {
+    // Attempt to read existing info metadata to preserve fields (e.g., baseSha)
+    let existing: any = {}
+    try {
+      const existingTxt = await this.readFromPrefix(root, VAR_INFO, filepath)
+      if (existingTxt) existing = JSON.parse(existingTxt)
+    } catch (err) {
+      existing = {}
+    }
+
+    let entry: any = { path: filepath, updatedAt: now }
+    if (seg === 'workspace') entry = this._buildWorkspaceEntry(existing, filepath, sha, now)
+    else if (seg === 'base') entry = this._buildBaseEntry(existing, filepath, sha, now)
+    else if (seg === 'conflict') entry = this._buildConflictEntry(existing, filepath, now)
+
+    await this._writeToPrefix(root, VAR_INFO, filepath, JSON.stringify(entry))
+  }
+  /**
+   * Build info entry for workspace writes.
+   * @returns {any}
+   */
+  private _buildWorkspaceEntry(existing: any, filepath: string, sha: string, now: number): any {
+    const entry: any = { path: filepath, updatedAt: now }
+    if (existing && existing.baseSha) entry.baseSha = existing.baseSha
+    entry.workspaceSha = sha
+    entry.state = entry.baseSha ? 'modified' : 'added'
+    if (existing && existing.remoteSha) entry.remoteSha = existing.remoteSha
+    return entry
+  }
+  /**
+   * Build info entry for base writes.
+   * @returns {any}
+   */
+  private _buildBaseEntry(existing: any, filepath: string, sha: string, now: number): any {
+    const entry: any = { path: filepath, updatedAt: now }
+    if (existing && existing.workspaceSha) entry.workspaceSha = existing.workspaceSha
+    entry.baseSha = sha
+    entry.state = 'base'
+    if (existing && existing.remoteSha) entry.remoteSha = existing.remoteSha
+    return entry
+  }
+  /**
+   * Build info entry for conflict writes.
+   * @returns {any}
+   */
+  private _buildConflictEntry(existing: any, filepath: string, now: number): any {
+    const entry: any = { path: filepath, updatedAt: now }
+    if (existing && existing.baseSha) entry.baseSha = existing.baseSha
+    if (existing && existing.workspaceSha) entry.workspaceSha = existing.workspaceSha
+    if (existing && existing.remoteSha) entry.remoteSha = existing.remoteSha
+    entry.state = 'conflict'
+    return entry
   }
 
   /**
@@ -213,20 +339,27 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * Read blob from a resolved root. Extracted to reduce cognitive complexity of public entry.
    * @returns {Promise<string|null>}
    */
-  private async _readBlobFromRoot(root: any, segment: any | undefined, filepath: string): Promise<string | null> {
-    if (segment) return await this._readFromSegment(root, segment, filepath)
-    return await this._readFromVariants(root, filepath)
+  private async _readBlobFromRoot(root: any, segment: 'workspace' | 'base' | 'conflict' | 'info' | undefined, filepath: string): Promise<string | null> {
+    // segment指定がある場合はそのまま返却
+    if (segment !== undefined) {
+      return await this._readFromSegment(root, segment, filepath)
+    }
+
+    // segment未指定の場合はworkspace→baseの順で参照
+    const workspaceContent = await this._readFromSegment(root, 'workspace', filepath)
+    if (workspaceContent !== null) return workspaceContent
+    return await this._readFromSegment(root, 'base', filepath)
   }
 
   /**
    * Read from a specific segment prefix.
     * @returns {Promise<string|null>} file text or null
     */
-  private async _readFromSegment(root: any, segment: any, filepath: string): Promise<string | null> {
-    const prefix = segment === VAR_WORKSPACE ? VAR_WORKSPACE : segment === 'base' ? VAR_BASE : VAR_CONFLICT
+  private async _readFromSegment(root: any, segment: 'workspace' | 'base' | 'conflict' | 'info', filepath: string): Promise<string | null> {
+    const prefix = segment === 'workspace' ? VAR_WORKSPACE : segment === 'base' ? VAR_BASE : segment === 'info' ? VAR_INFO : VAR_CONFLICT
     try {
       return await this.readFromPrefix(root, prefix, filepath)
-    } catch (_) {
+    } catch (err) {
       return null
     }
   }
@@ -237,12 +370,8 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     */
   private async _readFromVariants(root: any, filepath: string): Promise<string | null> {
     for (const v of this.getVariants()) {
-      try {
-        const txt = await this.readFromPrefix(root, v, filepath)
-        if (txt !== null) return txt
-      } catch (_) {
-        // try next
-      }
+      const txt = await this.readFromPrefix(root, v, filepath)
+      if (txt !== null) return txt
     }
     return null
   }
@@ -252,25 +381,17 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * @returns {Promise<void>} 削除完了時に解決
    */
   async deleteBlob(filepath: string, segment?: any): Promise<void> {
-    try {
-      const root = await this.getOpfsRoot()
-      if (!root) return
+    const root = await this.getOpfsRoot()
+    if (!root) return
+    if (segment === 'workspace') { await this.removeAtPrefix(root, VAR_WORKSPACE, filepath); return }
+    if (segment === 'base') { await this.removeAtPrefix(root, VAR_BASE, filepath); return }
+    if (segment === 'conflict') { await this.removeAtPrefix(root, VAR_CONFLICT, filepath); return }
+    if (segment === 'info') { await this.removeAtPrefix(root, VAR_INFO, filepath); return }
 
-      if (segment === VAR_WORKSPACE) { await this.removeAtPrefix(root, VAR_WORKSPACE, filepath); return }
-      if (segment === 'base') { await this.removeAtPrefix(root, VAR_BASE, filepath); return }
-      if (segment === 'conflict') { await this.removeAtPrefix(root, VAR_CONFLICT, filepath); return }
-
-      for (const v of this.getVariants()) await this.removeAtPrefix(root, v, filepath)
-    } catch (_) {
-      void 0
-    }
+    for (const v of this.getVariants()) await this.removeAtPrefix(root, v, filepath)
+    // also remove any info entry
+    await this.removeAtPrefix(root, VAR_INFO, filepath)
   }
-
-  /**
-   * Read a file at a given prefix (does not create directories)
-   * @returns {Promise<string|null>} file text or null
-   */
-  // NOTE: kept a single guarded `readFromPrefix` implementation below.
 
   /**
     * Remove a file at a given prefix (does not create directories)
@@ -280,21 +401,17 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     * @returns {Promise<void>} resolves when removal attempted (errors are ignored)
     */
   private async removeAtPrefix(root: any, prefix: string, filepath: string): Promise<void> {
-    try {
-      const full = this.rootDir ? `${this.rootDir}/${prefix}/${filepath}` : `${prefix}/${filepath}`
-      const parts = full.split('/').filter(Boolean)
-      const dir = await this.traverseDir(root, parts.slice(0, parts.length - 1))
-      const name = parts[parts.length - 1]
-      if (typeof dir.removeEntry === 'function') {
-        await dir.removeEntry(name)
-        return
-      }
-      if (typeof dir.getFileHandle === 'function') {
-        await this.tryRemoveFileHandle(dir, name)
-        return
-      }
-    } catch (_) {
-      // ignore per-variant errors
+    const full = this.rootDir ? `${this.rootDir}/${prefix}/${filepath}` : `${prefix}/${filepath}`
+    const parts = full.split('/').filter(Boolean)
+    const dir = await this.traverseDir(root, parts.slice(0, parts.length - 1))
+    const name = parts[parts.length - 1]
+    if (typeof dir.removeEntry === 'function') {
+      await dir.removeEntry(name)
+      return
+    }
+    if (typeof dir.getFileHandle === 'function') {
+      await this.tryRemoveFileHandle(dir, name)
+      
     }
   }
 
@@ -340,6 +457,144 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   }
 
   /**
+   * List all file paths under given prefix (relative paths).
+   * @returns {Promise<string[]>} Array of relative file paths; empty array on failure
+   */
+  private async listFilesAtPrefix(root: any, prefix: string): Promise<string[]> {
+    try {
+      const parts = this.rootDir ? this.rootDir.split('/').filter(Boolean).concat([prefix]) : [prefix]
+      const dir = await this.traverseDir(root, parts)
+      const results: string[] = []
+      await this._recurseListDir(dir, '', results)
+      return results
+    } catch (_) {
+      return []
+    }
+  }
+
+  /**
+   * Helper to recursively walk directory handles and collect file paths.
+   * @returns {Promise<void>}
+   */
+  private async _recurseListDir(d: any, base: string, results: string[]): Promise<void> {
+    // Prefer entries() async iterator; if unavailable, delegate to fallback.
+    try {
+      for await (const pair of (d as any).entries()) {
+        await this._processEntryPair(pair, base, results)
+      }
+      return
+    } catch (err) {
+      await this._recurseListDirFallback(d, base, results)
+      return
+    }
+  }
+
+  /**
+   * Process a single entry returned by entries(): push files or recurse into directories.
+   * @returns {Promise<void>}
+   */
+  private async _processEntryPair(pair: any, base: string, results: string[]): Promise<void> {
+    const name = Array.isArray(pair) ? pair[0] : (pair.name || '')
+    const handle = Array.isArray(pair) ? pair[1] : (pair[1] || pair)
+    const childPath = base ? `${base}/${name}` : name
+    if ((handle as any).kind === 'file' || typeof (handle as any).getFile === 'function') {
+      results.push(childPath)
+    } else {
+      await this._recurseListDir(handle, childPath, results)
+    }
+  }
+
+  /**
+   * Fallback recursion over directory when entries() iterator unavailable.
+   * @returns {Promise<void>}
+   */
+  private async _recurseListDirFallback(d: any, base: string, results: string[]): Promise<void> {
+    for await (const name of (d as any).keys()) {
+      await this._handleChildEntry(d, name, base, results)
+    }
+  }
+  /** Handle a single child entry name: try file first, then directory. */
+  /**
+   * @returns {Promise<void>}
+   */
+  private async _handleChildEntry(d: any, name: string, base: string, results: string[]): Promise<void> {
+    const childPath = base ? `${base}/${name}` : name
+    if (typeof d.getFileHandle === 'function') {
+      try {
+        const fh = await d.getFileHandle(name)
+        if (fh) { results.push(childPath); return }
+      } catch (err) {
+        return
+      }
+    }
+    if (typeof d.getDirectoryHandle === 'function') {
+      try {
+        const childDir = await d.getDirectoryHandle(name)
+        await this._recurseListDir(childDir, childPath, results)
+      } catch (err) {
+        return
+      }
+    }
+  }
+
+  /**
+   * Safely list files at prefix, returning an empty array on error.
+   * @returns {Promise<string[]>}
+   */
+  private async _safeListFilesAtPrefix(root: any, segPrefix: string): Promise<string[]> {
+    return this.listFilesAtPrefix(root, segPrefix).catch(() => [])
+  }
+
+  /**
+   * Collect info objects for given keys under VAR_INFO
+   * @returns {Promise<Array<{ path: string; info: string | null }>>}
+   */
+  private async _collectInfoForKeys(root: any, keys: string[]): Promise<Array<{ path: string; info: string | null }>> {
+    const out: Array<{ path: string; info: string | null }> = []
+    for (const k of keys) {
+      const info: string | null = await this.readFromPrefix(root, VAR_INFO, k).catch(() => null)
+      out.push({ path: k, info })
+    }
+    return out
+  }
+
+  /**
+   * 指定プレフィックス配下のファイル一覧を取得します。
+   * @param prefix プレフィックス（例: 'dir/sub'）。省略時はルート
+   * @param segment セグメント（'workspace' 等）。省略時は 'workspace'
+   * @param recursive サブディレクトリも含めるか。省略時は true
+    * @returns {Promise<Array<{ path: string; info: string | null }>>}
+   */
+  async listFiles(prefix?: string, segment?: any, recursive = true): Promise<Array<{ path: string; info: string | null }>> {
+    const root = await this.getOpfsRoot()
+    if (!root) return []
+
+    const seg: 'workspace' | 'base' | 'conflict' | 'info' = segment ?? 'workspace'
+    const segPrefix = seg === 'workspace' ? VAR_WORKSPACE : seg === 'base' ? VAR_BASE : seg === 'info' ? VAR_INFO : VAR_CONFLICT
+
+    const keys = await this._safeListFilesAtPrefix(root, segPrefix)
+    const p = prefix ? prefix.replace(/^\/+|\/+$/g, '') : ''
+    const filtered = this._filterKeys(keys, p, recursive)
+    return await this._collectInfoForKeys(root, filtered)
+  }
+
+  /**
+   * Filter keys by prefix and recursion flag for OPFS listing
+   * @returns {string[]}
+   */
+  private _filterKeys(keys: string[], p: string, recursive: boolean): string[] {
+    let out = keys
+    if (p) out = out.filter((k) => k === p || k.startsWith(p + '/'))
+    if (!recursive) {
+      out = out.filter((k) => {
+        const rest = p ? k.slice(p.length + 1) : k
+        return !rest.includes('/')
+      })
+    }
+    return out
+  }
+
+  /**
    * Try to remove a file via its file handle.
    * @returns {Promise<boolean>} true when removed, false otherwise
    */
@@ -350,10 +605,11 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         await (fh as any).remove()
         return true
       }
-    } catch (_) {
-      // ignore
+      return false
+    } catch (err) {
+      // getFileHandle/remove が例外を投げた場合は削除できなかったと扱う
+      return false
     }
-    return false
   }
 }
 

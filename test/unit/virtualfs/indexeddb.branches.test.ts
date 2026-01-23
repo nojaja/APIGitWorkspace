@@ -155,8 +155,8 @@ describe('IndexedDbStorage readBlob segment branches', () => {
 
   // Given（前提）: conflict segment に値が存在し、workspace/base には無い
   // When（操作）: segment 指定なしで readBlob を呼ぶ
-  // Then（期待）: workspace → base を見て null、最後に conflict を見て値を返す
-  it('readBlob returns value from conflict when workspace and base are null', async () => {
+  // Then（期待）: workspace → base を見て両方 null なので null を返す（conflict は参照しない）
+  it('readBlob returns null when workspace and base are null (conflict not checked)', async () => {
     const fakeDB: any = {
       transaction: jest.fn((storeName: string) => {
         const fakeStore: any = {
@@ -201,7 +201,7 @@ describe('IndexedDbStorage readBlob segment branches', () => {
     await storage.init();
 
     const content = await storage.readBlob('test.txt');
-    expect(content).toBe('conflict content');
+    expect(content).toBe(null);
 
     delete (globalThis as any).indexedDB;
   });

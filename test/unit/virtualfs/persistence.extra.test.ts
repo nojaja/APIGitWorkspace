@@ -84,28 +84,33 @@ describe('OpfsStorage extra coverage', () => {
   })
 
   it('deleteBlob via OPFS works', async () => {
-    const files = new Map<string, string>()
+    const allFiles = new Map<string, string>()
 
-    function makeDir(map: Map<string, any>) {
+    function makeDir(pathPrefix: string, map: Map<string, any>) {
       async function getDirectory(name: string) {
-        if (!map.has(name)) map.set(name, makeDir(new Map()))
+        const newPrefix = pathPrefix ? `${pathPrefix}/${name}` : name
+        if (!map.has(name)) map.set(name, makeDir(newPrefix, new Map()))
         return map.get(name)
       }
       async function getFileHandle(name: string, opts?: any) {
-        const key = name
+        const fullKey = pathPrefix ? `${pathPrefix}/${name}` : name
         async function createWritable() {
-          async function write(content: string) { map.set(key, content); files.set(key, content) }
+          async function write(content: string) { map.set(name, content); allFiles.set(fullKey, content) }
           async function close() {}
           return { write, close }
         }
-        async function getFile() { async function text() { return files.get(key) }; return { text } }
+        async function getFile() { async function text() { return allFiles.get(fullKey) }; return { text } }
         return { createWritable, getFile }
       }
-      async function removeEntry(name: string) { map.delete(name); files.delete(name) }
+      async function removeEntry(name: string) { 
+        const fullKey = pathPrefix ? `${pathPrefix}/${name}` : name
+        map.delete(name); 
+        allFiles.delete(fullKey) 
+      }
       return { getDirectory, getFileHandle, removeEntry }
     }
 
-    const root = makeDir(new Map())
+    const root = makeDir('', new Map())
     ;(globalThis as any).navigator = (globalThis as any).navigator || {}
     ;(navigator as any).storage = { persist: async () => true, getDirectory: async () => root }
 

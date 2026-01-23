@@ -25,7 +25,7 @@ describe('VirtualFS classify & base read flows', () => {
     const content = 'payload'
     await storage.writeBlob('r.txt', content, 'base');
     // create an index entry with different baseSha
-    (v as any).index.entries['r.txt'] = { path: 'r.txt', baseSha: 'old', state: 'base' }
+    (await v.getIndex()).entries['r.txt'] = { path: 'r.txt', baseSha: 'old', state: 'base' }
 
     // compute git blob sha via internal helper
     const gitSha = await (v as any).shaOfGitBlob(content)
@@ -37,7 +37,7 @@ describe('VirtualFS classify & base read flows', () => {
     const res = await (v as any)._classifyRemotePathForPull('r.txt', gitSha, normalized, pathsToFetch, reconciled)
     expect(res).toBe(true)
     // index entry should have been updated to new sha
-    const ie = (v as any).index.entries['r.txt']
+    const ie = (await v.getIndex()).entries['r.txt']
     expect(ie.baseSha).toBe(gitSha)
     expect(reconciled).toContain('r.txt')
   })

@@ -25,14 +25,25 @@ describe('OpfsStorage additional failure branches', () => {
 
   it('writeBlob/readBlob handles nested path creation', async () => {
     const storage = new OpfsStorage()
-    const created: Record<string, string> = {}
-    const dir = {
-      getDirectory: jest.fn(async (name: string) => dir),
-      getFileHandle: jest.fn(async (name: string, opts?: any) => ({
-        createWritable: jest.fn(async () => ({ write: async (d: any) => { created[name] = d }, close: async () => {} })),
-        getFile: jest.fn(async () => ({ text: async () => created[name] || '' }))
-      }))
-    } as any
+    const allFiles = new Map<string, string>()
+    
+    function makeDir(pathPrefix: string): any {
+      return {
+        getDirectory: jest.fn(async (name: string) => makeDir(pathPrefix ? `${pathPrefix}/${name}` : name)),
+        getFileHandle: jest.fn(async (name: string, opts?: any) => {
+          const fullKey = pathPrefix ? `${pathPrefix}/${name}` : name
+          return {
+            createWritable: jest.fn(async () => ({ 
+              write: async (d: any) => { allFiles.set(fullKey, d) }, 
+              close: async () => {} 
+            })),
+            getFile: jest.fn(async () => ({ text: async () => allFiles.get(fullKey) || '' }))
+          }
+        })
+      }
+    }
+    
+    const dir = makeDir('')
     ;(OpfsStorage.prototype as any).getOpfsRoot = async () => dir
 
     await storage.writeBlob('nested/dir/f.txt', 'ok data')
@@ -87,18 +98,31 @@ describe('OpfsStorage additional failure branches', () => {
     ;(OpfsStorage.prototype as any).getOpfsRoot = async () => root
 
     const res = await storage.readIndex()
-    expect(res).toBeNull()
+    // When error occurs, readIndex returns default empty index
+    expect(res).toEqual({ head: '', entries: {} })
   })
 
   it('writeBlob/readBlob works with getDirectoryHandle API', async () => {
     const storage = new OpfsStorage()
-    const created: Record<string, string> = {}
-    const root: any = {}
-    root.getDirectoryHandle = jest.fn(async (p: string) => root)
-    root.getFileHandle = jest.fn(async (name: string, opts?: any) => ({
-      createWritable: jest.fn(async () => ({ write: async (d: any) => { created[name] = d }, close: async () => {} })),
-      getFile: jest.fn(async () => ({ text: async () => created[name] || '' }))
-    }))
+    const allFiles = new Map<string, string>()
+    
+    function makeDir(pathPrefix: string): any {
+      return {
+        getDirectoryHandle: jest.fn(async (name: string, opts?: any) => makeDir(pathPrefix ? `${pathPrefix}/${name}` : name)),
+        getFileHandle: jest.fn(async (name: string, opts?: any) => {
+          const fullKey = pathPrefix ? `${pathPrefix}/${name}` : name
+          return {
+            createWritable: jest.fn(async () => ({ 
+              write: async (d: any) => { allFiles.set(fullKey, d) }, 
+              close: async () => {} 
+            })),
+            getFile: jest.fn(async () => ({ text: async () => allFiles.get(fullKey) || '' }))
+          }
+        })
+      }
+    }
+    
+    const root = makeDir('')
     ;(OpfsStorage.prototype as any).getOpfsRoot = async () => root
 
     await storage.writeBlob('dir1/dir2/f.txt', 'hello-handle')

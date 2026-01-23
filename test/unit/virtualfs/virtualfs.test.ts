@@ -8,16 +8,16 @@ describe('VirtualFS 基本動作', () => {
     await vfs.init()
 
     await vfs.writeFile('foo.txt', 'hello')
-    let idx = vfs.getIndex()
+    let idx = await vfs.getIndex()
     expect(idx.entries['foo.txt']).toBeDefined()
     expect(idx.entries['foo.txt'].state).toBe('added')
 
     await vfs.writeFile('foo.txt', 'hello2')
-    idx = vfs.getIndex()
+    idx = await vfs.getIndex()
     expect(idx.entries['foo.txt'].state).toBe('added')
 
     await vfs.deleteFile('foo.txt')
-    idx = vfs.getIndex()
+    idx = await vfs.getIndex()
     // since it was added then deleted before base exists, entry removed
     expect(idx.entries['foo.txt']).toBeUndefined()
   })

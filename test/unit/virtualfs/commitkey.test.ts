@@ -22,7 +22,7 @@ describe('commitKey injection and index metadata', () => {
     await vfs.init()
     await vfs.writeFile('x.txt', 'content-x')
     const changes = await vfs.getChangeSet()
-    const parent = vfs.getIndex().head
+    const parent = (await vfs.getIndex()).head
 
     let capturedMessage = ''
     const adapter = {
@@ -40,7 +40,7 @@ describe('commitKey injection and index metadata', () => {
     // compute expected commitKey
     const expectedKey = crypto.createHash('sha1').update(parent + JSON.stringify(changes)).digest('hex')
     expect(capturedMessage).toContain('apigit-commit-key:' + expectedKey)
-    expect(vfs.getIndex().lastCommitKey).toBe(expectedKey)
+    expect((await vfs.getIndex()).lastCommitKey).toBe(expectedKey)
   })
 
   it('injects commitKey into GitLab actions commit message and records lastCommitKey', async () => {
@@ -48,7 +48,7 @@ describe('commitKey injection and index metadata', () => {
     await vfs.init()
     await vfs.writeFile('y.txt', 'content-y')
     const changes = await vfs.getChangeSet()
-    const parent = vfs.getIndex().head
+    const parent = (await vfs.getIndex()).head
 
     let capturedMessage = ''
     const adapter = {
@@ -63,6 +63,6 @@ describe('commitKey injection and index metadata', () => {
     expect(res.commitSha).toBe('commit-gl')
     const expectedKey = crypto.createHash('sha1').update(parent + JSON.stringify(changes)).digest('hex')
     expect(capturedMessage).toContain('apigit-commit-key:' + expectedKey)
-    expect(vfs.getIndex().lastCommitKey).toBe(expectedKey)
+    expect((await vfs.getIndex()).lastCommitKey).toBe(expectedKey)
   })
 })

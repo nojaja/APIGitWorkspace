@@ -5,27 +5,32 @@ describe('OpfsStorage extra coverage', () => {
     const s = new (OpfsStorage as any)('apigit_storage')
     const store = new Map<string, string>()
 
-    const fileHandle = {
-      createWritable: async () => ({
-        write: async (data: string) => { store.set('apigit_storage/workspace/a.txt', data) },
-        close: async () => undefined
-      }),
-      getFile: async () => ({ text: async () => (store.get('apigit_storage/workspace/a.txt') ?? '') })
+    function createDirHandler(pathPrefix: string): any {
+      return {
+        getFileHandle: async (name: string, opts?: any) => {
+          const fullPath = pathPrefix ? `${pathPrefix}/${name}` : name
+          return {
+            createWritable: async () => ({
+              write: async (data: string) => { store.set(fullPath, data) },
+              close: async () => undefined
+            }),
+            getFile: async () => ({ 
+              text: async () => store.get(fullPath) ?? ''
+            })
+          }
+        },
+        getDirectoryHandle: async (name: string, opts?: any) => {
+          const newPrefix = pathPrefix ? `${pathPrefix}/${name}` : name
+          return createDirHandler(newPrefix)
+        },
+        removeEntry: async (name: string) => { 
+          const fullPath = pathPrefix ? `${pathPrefix}/${name}` : name
+          store.delete(fullPath) 
+        }
+      }
     }
 
-    const workspaceDir = {
-      getFileHandle: async (_name: string, _opts?: any) => fileHandle,
-      removeEntry: async (_name: string) => { store.delete('apigit_storage/workspace/a.txt') }
-    }
-
-    const apigitDir = {
-      getDirectoryHandle: async (_p: string, _opts?: any) => workspaceDir
-    }
-
-    const rootDir = {
-      getDirectoryHandle: async (_p: string, _opts?: any) => apigitDir,
-      getFileHandle: async (_name: string, _opts?: any) => fileHandle
-    }
+    const rootDir = createDirHandler('apigit_storage')
 
     // stub getOpfsRoot to return our fake root
     ;(s as any).getOpfsRoot = async () => rootDir

@@ -12,7 +12,7 @@ describe('VirtualFS pull/push', () => {
     const remote = { 'a.txt': 'v2' }
     const res = await vfs.pull('head2', remote)
     expect(res.conflicts.length).toBe(0)
-    const idx = vfs.getIndex()
+    const idx = await vfs.getIndex()
     expect(idx.head).toBe('head2')
     const content = await vfs.readFile('a.txt')
     expect(content).toBe('v2')
@@ -44,7 +44,7 @@ describe('VirtualFS pull/push', () => {
     // push with correct parent
     const result = await vfs.push({ message: 'm', parentSha: 'head1', changes })
     expect(result.commitSha).toBeDefined()
-    const idx = vfs.getIndex()
+    const idx = await vfs.getIndex()
     expect(idx.head).toBe(result.commitSha)
     // workspace cleaned and base updated (readFile returns base blob)
     const w = await vfs.readFile('a.txt')

@@ -26,30 +26,39 @@ describe('readFile and resolveConflict branches', () => {
   it('resolveConflict promotes remote content when present and updates index', async () => {
     const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
-    const path = 'conf.txt'
-    // set index entry with remoteSha
-    vfs.getIndex().entries[path] = { path, remoteSha: 'r1' } as any
+    const filePath = 'conf.txt'
+    // set index entry with remoteSha via backend
+    const entry = { path: filePath, remoteSha: 'r1' }
+    await storage.writeBlob(filePath, JSON.stringify(entry), 'info')
 
     // write conflict blob
-    await storage.writeBlob(path, 'RC', 'conflict')
+    await storage.writeBlob(filePath, 'RC', 'conflict')
 
-    const res = await vfs.resolveConflict(path)
+    // init VirtualFS to load the entries from backend
+    await vfs.init()
+
+    const res = await vfs.resolveConflict(filePath)
     expect(res).toBe(true)
-    const ie = vfs.getIndex().entries[path]
+    const ie = (await vfs.getIndex()).entries[filePath]
     expect(ie.state).toBe('base')
     // backend should have base blob
-    expect(await storage.readBlob(path,'base')).toBe('RC')
+    expect(await storage.readBlob(filePath,'base')).toBe('RC')
   })
 
   it('resolveConflict promotes remoteSha even if blob not present', async () => {
     const storage = new InMemoryStorage()
     const vfs = new VirtualFS({ backend: storage })
-    const path = 'noblob.txt'
-    vfs.getIndex().entries[path] = { path, remoteSha: 'r2' } as any
+    const filePath2 = 'noblob.txt'
+    // set index entry with remoteSha via backend
+    const entry = { path: filePath2, remoteSha: 'r2' }
+    await storage.writeBlob(filePath2, JSON.stringify(entry), 'info')
 
-    const res = await vfs.resolveConflict(path)
+    // init VirtualFS to load the entries from backend
+    await vfs.init()
+
+    const res = await vfs.resolveConflict(filePath2)
     expect(res).toBe(true)
-    const ie = vfs.getIndex().entries[path]
+    const ie = (await vfs.getIndex()).entries[filePath2]
     expect(ie.baseSha).toBe('r2')
     expect(ie.state).toBe('base')
   })
