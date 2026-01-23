@@ -11,7 +11,6 @@ type RemoteSnapshotDescriptor = {
 /** Virtual file system - 永続化バックエンドを抽象化した仮想ファイルシステム */
 export class VirtualFS {
   private storageDir: string | undefined
-  private base = new Map<string, { sha: string; content: string }>()
   // `workspace` state moved to StorageBackend implementations; in-memory cache removed
   private tombstones = new Map<string, TombstoneEntry>()
   private head: string = ''
@@ -43,7 +42,6 @@ export class VirtualFS {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
-  /** Git blob の SHA1 (ヘッダ込み) を算出します。*/
   /** Git blob の SHA1 (ヘッダ込み) を算出します。
    * @param {string} content コンテンツ
    * @returns {Promise<string>} 計算された SHA
@@ -79,12 +77,7 @@ export class VirtualFS {
       if (raw) {
         this.head = raw.head || ''
         this.lastCommitKey = (raw as any).lastCommitKey
-        // Populate internal maps lightly (only shas known)
-        for (const [p, e] of Object.entries(raw.entries)) {
-          if (e.baseSha) {
-            this.base.set(p, { sha: e.baseSha, content: '' })
-          }
-        }
+        // Base segment is managed by StorageBackend; no in-memory cache needed
       }
     } catch (err) {
       this.head = ''
@@ -166,28 +159,20 @@ export class VirtualFS {
     // try workspace blob in backend first (read-through)
     const wsBlob = await this.backend.readBlob(filepath, 'workspace')
     if (wsBlob !== null) return wsBlob
-    // then try base (.git-base)
+    // then try base (.git-base) - backend handles all base segment access
     const baseBlob = await this.backend.readBlob(filepath, 'base')
     if (baseBlob !== null) return baseBlob
-    const b = this.base.get(filepath)
-    if (b && b.content) return b.content
     return null
   }
 
   /**
-   * Read content from base segment (cache-first).
+   * Read content from base segment.
    * @param {string} filepath ファイルパス
    * @returns {Promise<string|null>} content or null if not present
    */
   private async _readBaseContent(filepath: string): Promise<string | null> {
-    const cached = this.base.get(filepath)
-    if (cached && cached.content) return cached.content
-    const blob = await this.backend.readBlob(filepath, 'base')
-    if (blob !== null) {
-      this.base.set(filepath, { sha: cached?.sha || '', content: blob })
-      return blob
-    }
-    return null
+    // Delegate directly to StorageBackend - no caching needed
+    return await this.backend.readBlob(filepath, 'base')
   }
 
   /**
@@ -214,7 +199,7 @@ export class VirtualFS {
         entry.state = entry.state || 'base'
         entry.updatedAt = Date.now()
         await this.backend.writeBlob(p, JSON.stringify(entry), 'info')
-        this.base.set(p, { sha, content: baseContent })
+        // base segment is managed by backend; info entry update is sufficient
         reconciledPaths.push(p)
         return true
       }
@@ -250,8 +235,6 @@ export class VirtualFS {
       if (remoteContent !== null && ie && ie.remoteSha) {
         // write to .git-base
         await this.backend.writeBlob(filepath, remoteContent, 'base')
-        // update in-memory base map
-        this.base.set(filepath, { sha: ie.remoteSha, content: remoteContent })
         // update index entry: set baseSha to remoteSha, clear remoteSha, set state to base
         ie.baseSha = ie.remoteSha
         delete ie.remoteSha
@@ -292,8 +275,8 @@ export class VirtualFS {
     const newShas: Record<string, string> = {}
     for (const [p, c] of Object.entries(snapshot)) newShas[p] = await this.shaOf(c)
 
-    const toAddOrUpdate = this._computeToAddOrUpdate(snapshot, newShas)
-    const toRemove = this._computeToRemove(snapshot)
+    const toAddOrUpdate = await this._computeToAddOrUpdate(snapshot, newShas)
+    const toRemove = await this._computeToRemove(snapshot)
 
     await this._applyRemovals(toRemove)
     await this._applyAddsOrUpdates(toAddOrUpdate, snapshot, newShas)
@@ -308,12 +291,15 @@ export class VirtualFS {
    * @param {Record<string,string>} newShas path->sha マップ
    * @returns {string[]} 追加/更新すべきパスの配列
    */
-  private _computeToAddOrUpdate(snapshot: Record<string, string>, newShas: Record<string, string>) {
+  private async _computeToAddOrUpdate(snapshot: Record<string, string>, newShas: Record<string, string>) {
     const out: string[] = []
     for (const [p] of Object.entries(snapshot)) {
-      const existing = this.base.get(p)
       const sha = newShas[p]
-      if (!existing || existing.sha !== sha) out.push(p)
+      // Query backend info to check if base blob SHA matches
+      let entry: any = undefined
+      const infoTxt = await this.backend.readBlob(p, 'info')
+      if (infoTxt) entry = JSON.parse(infoTxt)
+      if (!entry || entry.baseSha !== sha) out.push(p)
     }
     return out
   }
@@ -322,9 +308,14 @@ export class VirtualFS {
    * @param {Record<string,string>} snapshot リモートの path->content マップ
    * @returns {string[]} 削除すべきパスの配列
    */
-  private _computeToRemove(snapshot: Record<string, string>) {
+  private async _computeToRemove(snapshot: Record<string, string>) {
     const out: string[] = []
-    for (const p of Array.from(this.base.keys())) if (!(p in snapshot)) out.push(p)
+    // Query backend info store for all paths that exist in base
+    const infos = await this.backend.listFiles(undefined, 'info')
+    for (const it of infos) {
+      const p = it.path
+      if (!(p in snapshot)) out.push(p)
+    }
     return out
   }
 
@@ -335,7 +326,7 @@ export class VirtualFS {
    */
   private async _applyRemovals(toRemove: string[]) {
     for (const p of toRemove) {
-      this.base.delete(p)
+      // Backend manages base segment; just cleanup info and all segments
       await this.backend.deleteBlob(p)
       let ie: any = undefined
       const infoTxt = await this.backend.readBlob(p, 'info')
@@ -357,7 +348,7 @@ export class VirtualFS {
     for (const p of toAddOrUpdate) {
       const content = snapshot[p]
       const sha = newShas[p]
-      this.base.set(p, { sha, content })
+      // Backend manages base segment persistence; just persist blob and update info
       await this.backend.writeBlob(p, content, 'base')
       let existing: any = undefined
       const infoTxt = await this.backend.readBlob(p, 'info')
@@ -524,7 +515,12 @@ export class VirtualFS {
       const wsSha = idxEntry?.workspaceSha || await this.shaOf(wsBlob)
       localWorkspace = { sha: wsSha, content: wsBlob }
     }
-    const localBase = this.base.get(p)
+    // Read base blob from backend instead of in-memory map
+    let localBase: { sha: string; content: string } | undefined = undefined
+    const baseBlob = await this.backend.readBlob(p, 'base')
+    if (baseBlob !== null && idxEntry?.baseSha) {
+      localBase = { sha: idxEntry.baseSha, content: baseBlob }
+    }
 
     if (!idxEntry) return await this._handleRemoteNew(p, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, localBase, remoteHeadSha)
     return await this._handleRemoteExisting(p, idxEntry, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, remoteHeadSha)
@@ -576,7 +572,7 @@ export class VirtualFS {
       await this.saveIndex()
       return
     }
-    this.base.set(p, { sha: perFileRemoteSha, content })
+    // Backend manages base segment persistence
     const entry = { path: p, state: 'base', baseSha: perFileRemoteSha, updatedAt: Date.now() }
     await this.backend.writeBlob(p, JSON.stringify(entry), 'info')
     await this.backend.writeBlob(p, content, 'base')
@@ -673,10 +669,14 @@ export class VirtualFS {
     const infoTxt = await this.backend.readBlob(p, 'info')
     if (infoTxt) ie = JSON.parse(infoTxt)
     if (!ie) return
-    const content = typeof baseSnapshot[p] !== 'undefined' ? baseSnapshot[p] : this.base.get(p)?.content
-    if (content !== undefined) {
+    // Prefer baseSnapshot content; if not available, query backend for base segment
+    let content = typeof baseSnapshot[p] !== 'undefined' ? baseSnapshot[p] : null
+    if (content === null) {
+      content = await this.backend.readBlob(p, 'base')
+    }
+    if (content !== null) {
+      // Backend manages base segment persistence
       await this.backend.writeBlob(p, content, 'base')
-      this.base.set(p, { sha: ie.remoteSha!, content })
     }
     ie.baseSha = ie.remoteSha
     delete ie.remoteSha
@@ -694,7 +694,7 @@ export class VirtualFS {
   private async _applyChangeLocally(ch: any) {
     if (ch.type === 'create' || ch.type === 'update') {
       const sha = await this.shaOf(ch.content)
-      this.base.set(ch.path, { sha, content: ch.content })
+      // Backend manages base segment persistence
       let entry: any = undefined
       const infoTxt = await this.backend.readBlob(ch.path, 'info')
       if (infoTxt) entry = JSON.parse(infoTxt)
@@ -731,7 +731,7 @@ export class VirtualFS {
    */
   private async _applyDelete(ch: any) {
     await this.backend.deleteBlob(ch.path, 'info')
-    this.base.delete(ch.path)
+    // Backend manages base segment; no in-memory base map to delete
     this.tombstones.delete(ch.path)
     await this.backend.deleteBlob(ch.path)
     await this.backend.deleteBlob(ch.path, 'workspace')
@@ -758,7 +758,7 @@ export class VirtualFS {
     if (!localWorkspace || localWorkspace.sha === e.baseSha) {
       // safe to delete locally
       await this.backend.deleteBlob(p, 'info')
-      this.base.delete(p)
+      // backend manages base segment persistence; remove blobs from backend
       await this.backend.deleteBlob(p)
     } else {
       conflicts.push({ path: p, baseSha: e.baseSha, workspaceSha: localWorkspace?.sha })

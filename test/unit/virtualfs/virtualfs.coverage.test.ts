@@ -18,7 +18,7 @@ describe('VirtualFS coverage targets', () => {
     await expect(v.push({ parentSha: 'not-head', changes: [{ type: 'create', path: 'a', content: 'x' }] } as any)).rejects.toThrow()
   })
 
-  it.skip('_areAllResolved and _promoteResolvedConflicts flow', async () => {
+  it('_areAllResolved and _promoteResolvedConflicts flow', async () => {
     const backend = new InMemoryStorage()
     const v = new VirtualFS({ backend })
     // prepare index entry with baseSha equal to remoteSha
@@ -32,7 +32,7 @@ describe('VirtualFS coverage targets', () => {
     expect((await v.getIndex()).entries['f'].state).toBe('base')
   })
 
-  it.skip('resolveConflict promotes remote content when present and deletes conflict blob', async () => {
+  it('resolveConflict promotes remote content when present and deletes conflict blob', async () => {
     const backend = new InMemoryStorage()
     const v = new VirtualFS({ backend })
     // write conflict blob
@@ -47,7 +47,7 @@ describe('VirtualFS coverage targets', () => {
     expect(got).toBeNull()
   })
 
-  it.skip('_handleRemoteDeletion branches', async () => {
+  it('_handleRemoteDeletion branches', async () => {
     const backend = new InMemoryStorage()
     const v = new VirtualFS({ backend })
     // case: entry with no baseSha -> ignored
