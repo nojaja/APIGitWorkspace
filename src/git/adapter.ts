@@ -17,5 +17,5 @@ export interface GitAdapter {
   // create commit
   createCommit(_message: string, _parentSha: string, _treeSha: string): Promise<string>
   // update ref to point to commit
-  updateRef(_ref: string, _commitSha: string, _force?: boolean): Promise<void>
+  updateRef(_reference: string, _commitSha: string, _force?: boolean): Promise<void>
 }

@@ -195,7 +195,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       try {
         const entry = JSON.parse(txt) as any
         result.entries[fp] = entry
-      } catch (err) {
+      } catch (error) {
         // ignore malformed info entry
         continue
       }
@@ -271,7 +271,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     try {
       const existingTxt = await this.readFromPrefix(root, VAR_INFO, filepath)
       if (existingTxt) existing = JSON.parse(existingTxt)
-    } catch (err) {
+    } catch (error) {
       existing = {}
     }
 
@@ -382,7 +382,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     const prefix = segment === 'workspace' ? VAR_WORKSPACE : segment === 'base' ? VAR_BASE : segment === 'info' ? VAR_INFO : VAR_CONFLICT
     try {
       return await this.readFromPrefix(root, prefix, filepath)
-    } catch (err) {
+    } catch (error) {
       return null
     }
   }
@@ -516,7 +516,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         await this._processEntryPair(pair, base, results)
       }
       return
-    } catch (err) {
+    } catch (error) {
       await this._recurseListDirFallback(d, base, results)
       return
     }
@@ -556,7 +556,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       try {
         const fh = await d.getFileHandle(name)
         if (fh) { results.push(childPath); return }
-      } catch (err) {
+      } catch (error) {
         return
       }
     }
@@ -564,7 +564,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       try {
         const childDir = await d.getDirectoryHandle(name)
         await this._recurseListDir(childDir, childPath, results)
-      } catch (err) {
+      } catch (error) {
         return
       }
     }
@@ -639,7 +639,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         return true
       }
       return false
-    } catch (err) {
+    } catch (error) {
       // getFileHandle/remove が例外を投げた場合は削除できなかったと扱う
       return false
     }

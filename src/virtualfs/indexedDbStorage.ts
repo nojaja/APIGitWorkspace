@@ -4,7 +4,7 @@ import { StorageBackend, StorageBackendConstructor, Segment } from './storageBac
 /**
  * IndexedDB を用いた永続化実装
  */
-export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorage implements StorageBackend {
+export const IndexedDbStorage: StorageBackendConstructor = class IndexedDatabaseStorage implements StorageBackend {
   /**
    * 環境に IndexedDB が存在するかを同期検査します。
     * @returns {boolean} 利用可能なら true
@@ -28,12 +28,12 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {string[]} available root names
    */
   static availableRoots(): string[] {
-    return [IndexedDbStorage.DEFAULT_DB_NAME]
+    return [IndexedDatabaseStorage.DEFAULT_DB_NAME]
   }
 
   /** コンストラクタ */
   constructor(root?: string) {
-    this.dbName = root ?? IndexedDbStorage.DEFAULT_DB_NAME
+    this.dbName = root ?? IndexedDatabaseStorage.DEFAULT_DB_NAME
     // Kick off DB open immediately so dbPromise is always defined
     this.dbPromise = this.openDb()
   }
@@ -54,23 +54,23 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
     return new Promise((resolve, reject) => {
       const idb = (globalThis as any).indexedDB
       if (!idb) return reject(new Error('IndexedDB is not available'))
-      const req = idb.open(this.dbName, 1)
+      const request = idb.open(this.dbName, 1)
       /**
        * Handle DB upgrade event
        * @param {Event} ev Upgrade event
        * @returns {void}
        */
-      req.onupgradeneeded = (ev: any) => this._handleUpgrade(ev)
+      request.onupgradeneeded = (event: any) => this._handleUpgrade(event)
       /**
        * Handle open success
        * @returns {void}
        */
-      req.onsuccess = () => this._onOpenSuccess(req, resolve)
+      request.onsuccess = () => this._onOpenSuccess(request, resolve)
       /**
        * Handle open error
        * @returns {void}
        */
-      req.onerror = () => this._onOpenError(req, reject)
+      request.onerror = () => this._onOpenError(request, reject)
     })
   }
 
@@ -82,13 +82,13 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @param ev Upgrade event
    * @returns {void}
    */
-  private _handleUpgrade(ev: any) {
-    const db = (ev.target as IDBOpenDBRequest).result
-    if (!db.objectStoreNames.contains(IndexedDbStorage.VAR_WORKSPACE)) db.createObjectStore(IndexedDbStorage.VAR_WORKSPACE)
-    if (!db.objectStoreNames.contains(IndexedDbStorage.VAR_BASE)) db.createObjectStore(IndexedDbStorage.VAR_BASE)
-    if (!db.objectStoreNames.contains(IndexedDbStorage.VAR_CONFLICT)) db.createObjectStore(IndexedDbStorage.VAR_CONFLICT)
-    if (!db.objectStoreNames.contains(IndexedDbStorage.VAR_INFO)) db.createObjectStore(IndexedDbStorage.VAR_INFO)
-    if (!db.objectStoreNames.contains('index')) db.createObjectStore('index')
+  private _handleUpgrade(event: any) {
+    const database = (event.target as IDBOpenDBRequest).result
+    if (!database.objectStoreNames.contains(IndexedDatabaseStorage.VAR_WORKSPACE)) database.createObjectStore(IndexedDatabaseStorage.VAR_WORKSPACE)
+    if (!database.objectStoreNames.contains(IndexedDatabaseStorage.VAR_BASE)) database.createObjectStore(IndexedDatabaseStorage.VAR_BASE)
+    if (!database.objectStoreNames.contains(IndexedDatabaseStorage.VAR_CONFLICT)) database.createObjectStore(IndexedDatabaseStorage.VAR_CONFLICT)
+    if (!database.objectStoreNames.contains(IndexedDatabaseStorage.VAR_INFO)) database.createObjectStore(IndexedDatabaseStorage.VAR_INFO)
+    if (!database.objectStoreNames.contains('index')) database.createObjectStore('index')
   }
 
   /**
@@ -99,8 +99,8 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @param dbParam Target DB
    * @returns {() => void}
    */
-  private _makeVersionChangeHandler(dbParam: IDBDatabase) {
-    return () => { dbParam.close() }
+  private _makeVersionChangeHandler(databaseParameter: IDBDatabase) {
+    return () => { databaseParameter.close() }
   }
 
   /**
@@ -112,10 +112,10 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @param resolve Resolver for the open promise
    * @returns {void}
    */
-  private _onOpenSuccess(req: IDBOpenDBRequest, resolve: (_db: IDBDatabase) => void) {
-    const db = req.result
-    db.onversionchange = this._makeVersionChangeHandler(db)
-    resolve(db)
+  private _onOpenSuccess(request: IDBOpenDBRequest, resolve: (_database: IDBDatabase) => void) {
+    const database = request.result
+    database.onversionchange = this._makeVersionChangeHandler(database)
+    resolve(database)
   }
 
   /**
@@ -127,8 +127,8 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @param reject Reject function for the open promise
    * @returns {void}
    */
-  private _onOpenError(req: IDBOpenDBRequest, reject: (_err?: any) => void) {
-    reject(req.error)
+  private _onOpenError(request: IDBOpenDBRequest, reject: (_error?: any) => void) {
+    reject(request.error)
   }
 
   /**
@@ -139,11 +139,11 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * トランザクションラッパー。cb 内の処理をトランザクションで実行し、必要なら再試行します。
    * @returns {Promise<void>} トランザクション処理完了時に解決
    */
-  private async tx(storeName: string, mode: IDBTransactionMode, cb: (_store: IDBObjectStore) => void | Promise<void>): Promise<void> {
-    try { return await this._performTxAttempt(storeName, mode, cb) } catch (err: any) {
-      const isInvalidState = err && (err.name === 'InvalidStateError' || /closing/i.test(String(err.message || '')))
-      if (isInvalidState) { this.dbPromise = this.openDb(); return await this._performTxAttempt(storeName, mode, cb) }
-      throw err
+  private async tx(storeName: string, mode: IDBTransactionMode, callback: (_store: IDBObjectStore) => void | Promise<void>): Promise<void> {
+    try { return await this._performTxAttempt(storeName, mode, callback) } catch (error: any) {
+      const isInvalidState = error && (error.name === 'InvalidStateError' || /closing/i.test(String(error.message || '')))
+      if (isInvalidState) { this.dbPromise = this.openDb(); return await this._performTxAttempt(storeName, mode, callback) }
+      throw error
     }
   }
 
@@ -151,12 +151,12 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * 単一トランザクション試行実行を行います。
    * @returns {Promise<void>} トランザクション処理完了時に解決
    */
-  private async _performTxAttempt(storeName: string, mode: IDBTransactionMode, cb: (_store: IDBObjectStore) => void | Promise<void>): Promise<void> {
-    const db = await this.dbPromise
+  private async _performTxAttempt(storeName: string, mode: IDBTransactionMode, callback: (_store: IDBObjectStore) => void | Promise<void>): Promise<void> {
+    const database = await this.dbPromise
     return new Promise<void>((resolve, reject) => {
       let tx: IDBTransaction
-      try { tx = db.transaction(storeName, mode) } catch (err) { return reject(err) }
-      const storeObj = tx.objectStore(storeName)
+      try { tx = database.transaction(storeName, mode) } catch (error) { return reject(error) }
+      const storeObject = tx.objectStore(storeName)
 
       /**
        * Transaction complete handler
@@ -169,7 +169,7 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
        */
       const handleTxError = () => { reject(tx.error) }
 
-      Promise.resolve(cb(storeObj)).then(() => {
+      Promise.resolve(callback(storeObject)).then(() => {
         tx.oncomplete = handleTxComplete
         tx.onerror = handleTxError
       }).catch(reject)
@@ -183,23 +183,23 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {Promise<IndexFile|null>} 読み出した IndexFile、存在しなければ null
    */
   async readIndex(): Promise<IndexFile | null> {
-    const db = await this.dbPromise
+    const database = await this.dbPromise
     // Read meta from 'index' store then reconstruct entries from VAR_INFO
     const meta: IndexFile | null = await new Promise<IndexFile | null>((resolve) => {
       try {
-        const tx = db.transaction('index', 'readonly')
+        const tx = database.transaction('index', 'readonly')
         const store = tx.objectStore('index')
-        const req = store.get('index')
+        const request = store.get('index')
         /**
          * Success handler for index get.
          * @returns {void}
          */
-        req.onsuccess = () => { resolve(req.result ?? null) }
+        request.onsuccess = () => { resolve(request.result ?? null) }
         /**
          * Error handler for index get.
          * @returns {void}
          */
-        req.onerror = () => { resolve(null) }
+        request.onerror = () => { resolve(null) }
       } catch (_) { resolve(null) }
     })
     const result: IndexFile = { head: '', entries: {} }
@@ -210,9 +210,9 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
 
     // enumerate keys in info store and assemble entries
   
-      const keys = await this._listKeysFromStore(IndexedDbStorage.VAR_INFO)
+      const keys = await this._listKeysFromStore(IndexedDatabaseStorage.VAR_INFO)
       for (const k of keys) {
-          const txt = await this._getFromStore(IndexedDbStorage.VAR_INFO, k)
+          const txt = await this._getFromStore(IndexedDatabaseStorage.VAR_INFO, k)
           if (!txt) continue
           const entry = JSON.parse(txt)
           result.entries[k] = entry
@@ -228,7 +228,7 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
   async writeIndex(index: IndexFile): Promise<void> {
     // Write entries individually into info store, then write metadata into 'index'
     const entries = index.entries || {}
-    await this.tx(IndexedDbStorage.VAR_INFO, 'readwrite', async (store) => {
+    await this.tx(IndexedDatabaseStorage.VAR_INFO, 'readwrite', async (store) => {
       for (const filepath of Object.keys(entries)) {
         store.put(JSON.stringify(entries[filepath]), filepath)
       }
@@ -242,7 +242,7 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    */
   async writeBlob(filepath: string, content: string, segment?: Segment): Promise<void> {
     const seg: Segment = segment ?? 'workspace'
-      const storeName = seg === 'workspace' ? IndexedDbStorage.VAR_WORKSPACE : seg === 'base' ? IndexedDbStorage.VAR_BASE : seg === 'info' ? IndexedDbStorage.VAR_INFO : IndexedDbStorage.VAR_CONFLICT
+      const storeName = seg === 'workspace' ? IndexedDatabaseStorage.VAR_WORKSPACE : seg === 'base' ? IndexedDatabaseStorage.VAR_BASE : seg === 'info' ? IndexedDatabaseStorage.VAR_INFO : IndexedDatabaseStorage.VAR_CONFLICT
     await this.tx(storeName, 'readwrite', (store) => { store.put(content, filepath) })
 
     // Do not recursively create info entry when writing into info store itself
@@ -259,13 +259,13 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {Promise<void>}
    */
   private async _updateInfoForWrite(filepath: string, seg: Segment, sha: string, now: number): Promise<void> {
-    const existingTxt = await this._getFromStore(IndexedDbStorage.VAR_INFO, filepath)
+    const existingTxt = await this._getFromStore(IndexedDatabaseStorage.VAR_INFO, filepath)
     const existing: any = existingTxt ? JSON.parse(existingTxt) : {}
     let entry: any = { path: filepath, updatedAt: now }
     if (seg === 'workspace') entry = this._buildWorkspaceEntry(existing, filepath, sha, now)
     else if (seg === 'base') entry = this._buildBaseEntry(existing, filepath, sha, now)
     else if (seg === 'conflict') entry = this._buildConflictEntry(existing, filepath, now)
-    await this.tx(IndexedDbStorage.VAR_INFO, 'readwrite', (store) => { store.put(JSON.stringify(entry), filepath) })
+    await this.tx(IndexedDatabaseStorage.VAR_INFO, 'readwrite', (store) => { store.put(JSON.stringify(entry), filepath) })
   }
 
   /**
@@ -312,15 +312,15 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
   async readBlob(filepath: string, segment?: Segment): Promise<string | null> {
     // segment指定がある場合はそのまま返却
     if (segment !== undefined) {
-      if (segment === 'info') return await this._getFromStore(IndexedDbStorage.VAR_INFO, filepath)
-      const storeName = segment === IndexedDbStorage.VAR_WORKSPACE ? IndexedDbStorage.VAR_WORKSPACE : segment === 'base' ? IndexedDbStorage.VAR_BASE : IndexedDbStorage.VAR_CONFLICT
+      if (segment === 'info') return await this._getFromStore(IndexedDatabaseStorage.VAR_INFO, filepath)
+      const storeName = segment === IndexedDatabaseStorage.VAR_WORKSPACE ? IndexedDatabaseStorage.VAR_WORKSPACE : segment === 'base' ? IndexedDatabaseStorage.VAR_BASE : IndexedDatabaseStorage.VAR_CONFLICT
       return await this._getFromStore(storeName, filepath)
     }
 
     // segment未指定の場合はworkspace→baseの順で参照
-    const workspaceContent = await this._getFromStore(IndexedDbStorage.VAR_WORKSPACE, filepath)
+    const workspaceContent = await this._getFromStore(IndexedDatabaseStorage.VAR_WORKSPACE, filepath)
     if (workspaceContent !== null) return workspaceContent
-    return await this._getFromStore(IndexedDbStorage.VAR_BASE, filepath)
+    return await this._getFromStore(IndexedDatabaseStorage.VAR_BASE, filepath)
   }
 
   /**
@@ -328,15 +328,15 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {Promise<void>} 削除完了時に解決
    */
   async deleteBlob(filepath: string, segment?: Segment): Promise<void> {
-    if (segment === 'workspace') { await this._deleteFromStore(IndexedDbStorage.VAR_WORKSPACE, filepath); return }
-    if (segment === 'base') { await this._deleteFromStore(IndexedDbStorage.VAR_BASE, filepath); return }
-    if (segment === 'conflict') { await this._deleteFromStore(IndexedDbStorage.VAR_CONFLICT, filepath); return }
-    if (segment === 'info') { await this._deleteFromStore(IndexedDbStorage.VAR_INFO, filepath); return }
+    if (segment === 'workspace') { await this._deleteFromStore(IndexedDatabaseStorage.VAR_WORKSPACE, filepath); return }
+    if (segment === 'base') { await this._deleteFromStore(IndexedDatabaseStorage.VAR_BASE, filepath); return }
+    if (segment === 'conflict') { await this._deleteFromStore(IndexedDatabaseStorage.VAR_CONFLICT, filepath); return }
+    if (segment === 'info') { await this._deleteFromStore(IndexedDatabaseStorage.VAR_INFO, filepath); return }
     // segment未指定の場合はすべてのセグメントから削除
-    await this._deleteFromStore(IndexedDbStorage.VAR_WORKSPACE, filepath)
-    await this._deleteFromStore(IndexedDbStorage.VAR_BASE, filepath)
-    await this._deleteFromStore(IndexedDbStorage.VAR_CONFLICT, filepath)
-    await this._deleteFromStore(IndexedDbStorage.VAR_INFO, filepath)
+    await this._deleteFromStore(IndexedDatabaseStorage.VAR_WORKSPACE, filepath)
+    await this._deleteFromStore(IndexedDatabaseStorage.VAR_BASE, filepath)
+    await this._deleteFromStore(IndexedDatabaseStorage.VAR_CONFLICT, filepath)
+    await this._deleteFromStore(IndexedDatabaseStorage.VAR_INFO, filepath)
   }
 
   /**
@@ -346,22 +346,22 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {Promise<string|null>} value or null
    */
   private async _getFromStore(storeName: string, filepath: string): Promise<string | null> {
-    const db = await this.dbPromise
+    const database = await this.dbPromise
     return new Promise<string | null>((resolve) => {
       try {
-        const tx = db.transaction(storeName, 'readonly')
+        const tx = database.transaction(storeName, 'readonly')
         const store = tx.objectStore(storeName)
-        const req = store.get(filepath)
+        const request = store.get(filepath)
         /**
          * Index get success handler
          * @returns {void}
          */
-        req.onsuccess = function () { resolve(req.result ?? null) }
+        request.onsuccess = function () { resolve(request.result ?? null) }
         /**
          * Index get error handler
          * @returns {void}
          */
-        req.onerror = function () { resolve(null) }
+        request.onerror = function () { resolve(null) }
       } catch (_) { resolve(null) }
     })
   }
@@ -371,31 +371,31 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    * @returns {Promise<string[]>} Array of keys contained in the store
    */
   private async _listKeysFromStore(storeName: string): Promise<string[]> {
-    const db = await this.dbPromise
+    const database = await this.dbPromise
     return new Promise<string[]>((resolve) => {
       try {
-        const tx = db.transaction(storeName, 'readonly')
+        const tx = database.transaction(storeName, 'readonly')
         const store = tx.objectStore(storeName)
         const keys: string[] = []
-        const req = store.openKeyCursor()
+        const request = store.openKeyCursor()
         /**
          * Cursor success handler: collect keys.
          * @param ev Event from cursor
          * @returns {void}
          */
-        req.onsuccess = function (ev: any) {
-          const cur = ev.target.result
-            if (!cur) { resolve(keys); return }
-            if (cur.key !== undefined) {
-              keys.push(cur.key as string)
+        request.onsuccess = function (event: any) {
+          const current = event.target.result
+            if (!current) { resolve(keys); return }
+            if (current.key !== undefined) {
+              keys.push(current.key as string)
             }
-            cur.continue()
+            current.continue()
         }
         /**
          * Cursor error handler: resolve with collected keys so far.
          * @returns {void}
          */
-        req.onerror = function () { resolve(keys) }
+        request.onerror = function () { resolve(keys) }
       } catch (_) { resolve([]) }
     })
   }
@@ -409,7 +409,7 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
    */
   async listFiles(prefix?: string, segment?: Segment, recursive = true): Promise<Array<{ path: string; info: string | null }>> {
     const seg: Segment = segment ?? 'workspace'
-    const storeName = seg === 'workspace' ? IndexedDbStorage.VAR_WORKSPACE : seg === 'base' ? IndexedDbStorage.VAR_BASE : seg === 'info' ? IndexedDbStorage.VAR_INFO : IndexedDbStorage.VAR_CONFLICT
+    const storeName = seg === 'workspace' ? IndexedDatabaseStorage.VAR_WORKSPACE : seg === 'base' ? IndexedDatabaseStorage.VAR_BASE : seg === 'info' ? IndexedDatabaseStorage.VAR_INFO : IndexedDatabaseStorage.VAR_CONFLICT
 
     let keys: string[]
     try {
@@ -445,7 +445,7 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDbStorag
   private async _collectFiles(keys: string[]): Promise<Array<{ path: string; info: string | null }>> {
     const out: Array<{ path: string; info: string | null }> = []
     for (const k of keys) {
-      const info = await this._getFromStore(IndexedDbStorage.VAR_INFO, k)
+      const info = await this._getFromStore(IndexedDatabaseStorage.VAR_INFO, k)
       out.push({ path: k, info })
     }
     return out

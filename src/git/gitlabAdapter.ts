@@ -1,7 +1,7 @@
 import { GitAdapter } from './adapter'
 // Use Web Crypto directly for SHA-1
 
-type GLOpts = { projectId: string; token: string; host?: string }
+type GLOptions = { projectId: string; token: string; host?: string }
 
 /**
  * GitLab 向けの GitAdapter 実装です。
@@ -19,11 +19,11 @@ export class GitLabAdapter implements GitAdapter {
    * GitLabAdapter を初期化します。
    * @param {GLOpts} opts 設定オブジェクト
    */
-  constructor(private opts: GLOpts) {
-    const host = opts.host || 'https://gitlab.com'
-    this.baseUrl = `${host}/api/v4/projects/${encodeURIComponent(opts.projectId)}`
+  constructor(private options: GLOptions) {
+    const host = options.host || 'https://gitlab.com'
+    this.baseUrl = `${host}/api/v4/projects/${encodeURIComponent(options.projectId)}`
     this.headers = {
-       'PRIVATE-TOKEN': opts.token,
+       'PRIVATE-TOKEN': options.token,
        'Content-Type': 'application/json' 
     }
   }
@@ -100,7 +100,7 @@ export class GitLabAdapter implements GitAdapter {
    * @param {boolean} [_force]
    * @returns {Promise<void>}
    */
-  async updateRef(_ref: string, _commitSha: string, _force = false) {
+  async updateRef(_reference: string, _commitSha: string, _force = false) {
     // Not required when using commits API
   }
 
@@ -164,16 +164,16 @@ export class GitLabAdapter implements GitAdapter {
    * @returns {any} parsed commit id/object
    */
   private parseCommitResponse(text: string) {
-    let j: any = null
+    let index: any = null
     try {
-      j = text ? JSON.parse(text) : null
-    } catch (err) {
+      index = text ? JSON.parse(text) : null
+    } catch (error) {
       throw new Error(`GitLab commit invalid JSON response: ${text}`)
     }
-    if (!j || (!j.id && !j.commit)) {
-      throw new Error(`GitLab commit unexpected response: ${JSON.stringify(j)}`)
+    if (!index || (!index.id && !index.commit)) {
+      throw new Error(`GitLab commit unexpected response: ${JSON.stringify(index)}`)
     }
-    return j.id || j.commit || j
+    return index.id || index.commit || index
   }
 
   /**
@@ -193,13 +193,13 @@ export class GitLabAdapter implements GitAdapter {
    * @param {number} [retries] 最大リトライ回数
    * @returns {Promise<Response>} レスポンス
    */
-  private async fetchWithRetry(url: string, opts: RequestInit, retries = this.maxRetries): Promise<Response> {
+  private async fetchWithRetry(url: string, options: RequestInit, retries = this.maxRetries): Promise<Response> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       let res: Response | null = null
       try {
         // If fetch throws synchronously (e.g. mocked impl), this will be caught here
         // and handled as a transient error to be retried.
-        res = await fetch(url, opts) as Response
+        res = await fetch(url, options) as Response
       } catch (e: any) {
         if (attempt === retries) throw e
         await this._waitAttempt(attempt)
@@ -255,9 +255,9 @@ export class GitLabAdapter implements GitAdapter {
     const results: R[] = new Array(items.length)
     if (items.length === 0) return results
     // process items in chunks to limit concurrency
-    for (let i = 0; i < items.length; i += concurrency) {
-      const chunk = items.slice(i, i + concurrency)
-      await Promise.all(chunk.map((it, idx) => mapper(it).then((r) => { results[i + idx] = r })))
+    for (let index = 0; index < items.length; index += concurrency) {
+      const chunk = items.slice(index, index + concurrency)
+      await Promise.all(chunk.map((it, index_) => mapper(it).then((r) => { results[index + index_] = r })))
     }
     return results
   }
@@ -276,8 +276,8 @@ export class GitLabAdapter implements GitAdapter {
   private async _maybeVerifyParent(expectedParentSha: string, branch: string) {
     try {
       await this.verifyParent(expectedParentSha, branch)
-    } catch (err: any) {
-      if (err && String(err).includes('422')) throw err
+    } catch (error: any) {
+      if (error && String(error).includes('422')) throw error
       // otherwise continue
     }
   }

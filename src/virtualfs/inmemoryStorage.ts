@@ -79,15 +79,15 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
    * IndexFile を設定します。
    * @param idx 書き込む IndexFile
    */
-  async writeIndex(idx: IndexFile): Promise<void> {
+  async writeIndex(index: IndexFile): Promise<void> {
     const store = InMemoryStorage.stores.get(this.rootKey)!
     // write entries individually to infoBlobs, then persist meta
-    const entries = idx.entries || {}
+    const entries = index.entries || {}
     for (const filepath of Object.keys(entries)) {
       store.infoBlobs.set(filepath, JSON.stringify(entries[filepath]))
     }
-    store.index = { head: idx.head, entries: {} }
-    if ((idx as any).lastCommitKey) (store.index as any).lastCommitKey = (idx as any).lastCommitKey
+    store.index = { head: index.head, entries: {} }
+    if ((index as any).lastCommitKey) (store.index as any).lastCommitKey = (index as any).lastCommitKey
   }
 
   /**

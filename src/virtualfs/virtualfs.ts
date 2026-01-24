@@ -79,7 +79,7 @@ export class VirtualFS {
         this.lastCommitKey = (raw as any).lastCommitKey
         // Base segment is managed by StorageBackend; no in-memory cache needed
       }
-    } catch (err) {
+    } catch (error) {
       this.head = ''
       this.lastCommitKey = undefined
       await this.saveIndex()
@@ -91,9 +91,9 @@ export class VirtualFS {
    * @returns {Promise<void>}
    */
   private async saveIndex() {
-    const idx: IndexFile = { head: this.head, entries: {} }
-    if (this.lastCommitKey) (idx as any).lastCommitKey = this.lastCommitKey
-    await this.backend.writeIndex(idx)
+    const index: IndexFile = { head: this.head, entries: {} }
+    if (this.lastCommitKey) (index as any).lastCommitKey = this.lastCommitKey
+    await this.backend.writeIndex(index)
   }
  
   /**
@@ -234,8 +234,8 @@ export class VirtualFS {
       if (infoTxt) ie = JSON.parse(infoTxt)
       // fallback to index entries if backend has no info blob (tests may set index directly)
       if (!ie) {
-        const idx = await this.getIndex()
-        ie = idx.entries[filepath]
+        const index = await this.getIndex()
+        ie = index.entries[filepath]
       }
       // If we have remote content and an index entry with remoteSha, promote it to base
       if (remoteContent !== null && ie && ie.remoteSha) {
@@ -375,9 +375,9 @@ export class VirtualFS {
    * @param {any} err 例外オブジェクト
    * @returns {boolean}
    */
-  private _isNonFastForwardError(err: any) {
-    const msg = String(err && err.message ? err.message : err)
-    return msg.includes('422') || /fast\s*forward/i.test(msg) || /not a fast forward/i.test(msg)
+  private _isNonFastForwardError(error: any) {
+    const message = String(error && error.message ? error.message : error)
+    return message.includes('422') || /fast\s*forward/i.test(message) || /not a fast forward/i.test(message)
   }
 
   /**
@@ -385,8 +385,8 @@ export class VirtualFS {
    * @returns {Promise<IndexFile>}
    */
   async getIndex(): Promise<IndexFile> {
-    const idx = await this.backend.readIndex()
-    return idx || { head: this.head, entries: {} }
+    const index = await this.backend.readIndex()
+    return index || { head: this.head, entries: {} }
   }
 
   /**
@@ -427,8 +427,8 @@ export class VirtualFS {
     const changes: Change[] = []
     const tombChanges = await this._changesFromTombstones()
     changes.push(...tombChanges)
-    const idxChanges = await this._changesFromIndexEntries()
-    changes.push(...idxChanges)
+    const indexChanges = await this._changesFromIndexEntries()
+    changes.push(...indexChanges)
     return changes
   }
 
@@ -525,24 +525,24 @@ export class VirtualFS {
    * @returns {Promise<void>}
    */
   private async _handleRemotePath(p: string, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, remoteHeadSha: string) {
-    let idxEntry: any = undefined
+    let indexEntry: any = undefined
     const infoTxt = await this.backend.readBlob(p, 'info')
-    if (infoTxt) idxEntry = JSON.parse(infoTxt)
+    if (infoTxt) indexEntry = JSON.parse(infoTxt)
     let localWorkspace: { sha: string; content: string } | undefined = undefined
     const wsBlob = await this.backend.readBlob(p, 'workspace')
     if (wsBlob !== null) {
-      const wsSha = idxEntry?.workspaceSha || await this.shaOf(wsBlob)
+      const wsSha = indexEntry?.workspaceSha || await this.shaOf(wsBlob)
       localWorkspace = { sha: wsSha, content: wsBlob }
     }
     // Read base blob from backend instead of in-memory map
     let localBase: { sha: string; content: string } | undefined = undefined
     const baseBlob = await this.backend.readBlob(p, 'base')
-    if (baseBlob !== null && idxEntry?.baseSha) {
-      localBase = { sha: idxEntry.baseSha, content: baseBlob }
+    if (baseBlob !== null && indexEntry?.baseSha) {
+      localBase = { sha: indexEntry.baseSha, content: baseBlob }
     }
 
-    if (!idxEntry) return await this._handleRemoteNew(p, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, localBase, remoteHeadSha)
-    return await this._handleRemoteExisting(p, idxEntry, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, remoteHeadSha)
+    if (!indexEntry) return await this._handleRemoteNew(p, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, localBase, remoteHeadSha)
+    return await this._handleRemoteExisting(p, indexEntry, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, remoteHeadSha)
   }
 
   /**
@@ -601,14 +601,14 @@ export class VirtualFS {
    * リモートに存在し、かつローカルにエントリがあるパスを処理します。
    * @returns {Promise<void>}
    */
-  private async _handleRemoteExisting(p: string, idxEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, localWorkspace: { sha: string; content: string } | undefined, remoteHeadSha: string) {
-    const baseSha = idxEntry.baseSha
+  private async _handleRemoteExisting(p: string, indexEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, localWorkspace: { sha: string; content: string } | undefined, remoteHeadSha: string) {
+    const baseSha = indexEntry.baseSha
     if (baseSha === perFileRemoteSha) return
     // remote changed
     if (!localWorkspace || localWorkspace.sha === baseSha) {
-      await this._handleRemoteExistingUpdate(p, idxEntry, perFileRemoteSha, baseSnapshot, conflicts, remoteHeadSha)
+      await this._handleRemoteExistingUpdate(p, indexEntry, perFileRemoteSha, baseSnapshot, conflicts, remoteHeadSha)
     } else {
-      await this._handleRemoteExistingConflict(p, idxEntry, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, remoteHeadSha)
+      await this._handleRemoteExistingConflict(p, indexEntry, perFileRemoteSha, baseSnapshot, conflicts, localWorkspace, remoteHeadSha)
     }
   }
 
@@ -616,22 +616,22 @@ export class VirtualFS {
    * workspace に変更が無い場合のリモート更新処理を行う
    * @returns {Promise<void>}
    */
-  private async _handleRemoteExistingUpdate(p: string, idxEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, remoteHeadSha: string) {
-    const baseSha = idxEntry.baseSha
+  private async _handleRemoteExistingUpdate(p: string, indexEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, remoteHeadSha: string) {
+    const baseSha = indexEntry.baseSha
     const content = baseSnapshot[p]
     if (typeof content === 'undefined') {
-      idxEntry.state = 'conflict'
-      idxEntry.remoteSha = remoteHeadSha
-      idxEntry.updatedAt = Date.now()
-      await this.backend.writeBlob(p, JSON.stringify(idxEntry), 'info')
+      indexEntry.state = 'conflict'
+      indexEntry.remoteSha = remoteHeadSha
+      indexEntry.updatedAt = Date.now()
+      await this.backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
       await this.saveIndex()
       conflicts.push({ path: p, baseSha, remoteSha: remoteHeadSha, workspaceSha: undefined })
       return
     }
-    idxEntry.baseSha = perFileRemoteSha
-    idxEntry.state = 'base'
-    idxEntry.updatedAt = Date.now()
-    await this.backend.writeBlob(p, JSON.stringify(idxEntry), 'info')
+    indexEntry.baseSha = perFileRemoteSha
+    indexEntry.state = 'base'
+    indexEntry.updatedAt = Date.now()
+    await this.backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
     await this.backend.writeBlob(p, content, 'base')
   }
 
@@ -639,12 +639,12 @@ export class VirtualFS {
    * workspace が変更されている場合の競合処理（conflict 登録、remote content を .git-conflict に保存）
    * @returns {Promise<void>}
    */
-  private async _handleRemoteExistingConflict(p: string, idxEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, localWorkspace: { sha: string; content: string }, remoteHeadSha: string) {
-    const baseSha = idxEntry.baseSha
+  private async _handleRemoteExistingConflict(p: string, indexEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>, localWorkspace: { sha: string; content: string }, remoteHeadSha: string) {
+    const baseSha = indexEntry.baseSha
     // persist remote content for inspection under .git-conflict/
     await this._persistRemoteContentAsConflict(p, baseSnapshot[p])
     // record remoteHeadSha in index for later resolution
-    this._setIndexEntryToConflict(p, idxEntry, remoteHeadSha)
+    this._setIndexEntryToConflict(p, indexEntry, remoteHeadSha)
     await this.saveIndex()
     conflicts.push({ path: p, baseSha, remoteSha: remoteHeadSha, workspaceSha: localWorkspace?.sha })
   }
@@ -658,7 +658,7 @@ export class VirtualFS {
     if (typeof content === 'undefined') return
     try {
       await this.backend.writeBlob(p, content, 'conflict')
-    } catch (err) {
+    } catch (error) {
       // バックエンドの書き込みエラーは競合保存の補助処理で無視する
       return
     }
@@ -824,11 +824,11 @@ export class VirtualFS {
     if (typeof adapter.updateRef === 'function') {
       try {
         await adapter.updateRef(`heads/${branch}`, commitSha)
-      } catch (err: any) {
-        if (this._isNonFastForwardError(err)) {
+      } catch (error: any) {
+        if (this._isNonFastForwardError(error)) {
           throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
         }
-        if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', err)
+        if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('updateRef failed (non-422), continuing locally:', error)
       }
     }
   }
@@ -1001,8 +1001,8 @@ export class VirtualFS {
       // If backend has no info entry (tests may have mutated getIndex()),
       // fallback to in-memory index returned by getIndex()
       if (!ie) {
-        const idx = await this.getIndex()
-        ie = idx.entries[p]
+        const index = await this.getIndex()
+        ie = index.entries[p]
       }
       if (!ie || !ie.remoteSha || ie.baseSha !== ie.remoteSha) return false
     }
