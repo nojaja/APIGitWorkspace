@@ -13,7 +13,9 @@ beforeEach(async () => {
 afterEach(async () => {
   try {
     await fs.rm(tmpDir, { recursive: true, force: true })
-  } catch (e) { void e }
+  } catch (e) {
+    console.warn('一時ディレクトリ削除で警告:', e)
+  }
 })
 
 describe('VirtualFS conflict flows', () => {
@@ -31,7 +33,7 @@ describe('VirtualFS conflict flows', () => {
 
     expect(res.conflicts.length).toBeGreaterThanOrEqual(1)
     const found = res.conflicts.find((x: any) => x.path === 'c.txt')
-    expect(found).toBeDefined()
+    if (!found) throw new Error('c.txt の衝突エントリが見つかりません')
     expect(found.workspaceSha).toBeDefined()
     expect(found.remoteSha).toBeDefined()
   })
@@ -54,7 +56,7 @@ describe('VirtualFS conflict flows', () => {
 
     expect(res.conflicts.length).toBeGreaterThanOrEqual(1)
     const found = res.conflicts.find((x: any) => x.path === 'd.txt')
-    expect(found).toBeDefined()
+    if (!found) throw new Error('d.txt の衝突エントリが見つかりません')
     expect(found.baseSha).toBeDefined()
     expect(found.remoteSha).toBeDefined()
     expect(found.workspaceSha).toBeDefined()
@@ -78,7 +80,7 @@ describe('VirtualFS conflict flows', () => {
 
     expect(res.conflicts.length).toBeGreaterThanOrEqual(1)
     const found = res.conflicts.find((x: any) => x.path === 'e.txt')
-    expect(found).toBeDefined()
+    if (!found) throw new Error('e.txt の衝突エントリが見つかりません')
     expect(found.baseSha).toBeDefined()
     expect(found.workspaceSha).toBeDefined()
   })

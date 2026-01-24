@@ -4,7 +4,7 @@ import { StorageBackend, StorageBackendConstructor, Segment } from './storageBac
 /**
  * IndexedDB を用いた永続化実装
  */
-export const IndexedDbStorage: StorageBackendConstructor = class IndexedDatabaseStorage implements StorageBackend {
+export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDatabaseStorage implements StorageBackend {
   /**
    * 環境に IndexedDB が存在するかを同期検査します。
     * @returns {boolean} 利用可能なら true
@@ -476,4 +476,4 @@ export const IndexedDbStorage: StorageBackendConstructor = class IndexedDatabase
 
 }
 
-export default IndexedDbStorage
+export default IndexedDatabaseStorage

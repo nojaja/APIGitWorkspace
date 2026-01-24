@@ -1,5 +1,5 @@
 export { default as VirtualFS } from './virtualfs/virtualfs'
-export { default as IndexedDbStorage } from './virtualfs/indexedDbStorage'
+export { default as IndexedDatabaseStorage } from './virtualfs/indexedDatabaseStorage'
 export { default as OpfsStorage } from './virtualfs/opfsStorage'
 export { default as GitHubAdapter } from './git/githubAdapter'
 export { default as GitLabAdapter } from './git/gitlabAdapter'

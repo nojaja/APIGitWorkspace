@@ -13,7 +13,7 @@ async function main() {
 
   // GitHubAdapter の初期化例（ダミー設定）
   try {
-    const gh = new GitHubAdapter({ token: 'dummy-token' })
+    const gh = new GitHubAdapter({ token: 'dummy-token', owner: 'example', repo: 'demo-repo' })
     console.log('GitHubAdapter created:', gh.constructor.name)
   } catch (err) {
     console.error('GitHubAdapter 初期化時エラー (想定される動作です):', err)
@@ -21,7 +21,7 @@ async function main() {
 
   // GitLabAdapter の初期化例（ダミー設定）
   try {
-    const gl = new GitLabAdapter({ token: 'dummy-token' })
+    const gl = new GitLabAdapter({ token: 'dummy-token', projectId: '123' })
     console.log('GitLabAdapter created:', gl.constructor.name)
   } catch (err) {
     console.error('GitLabAdapter 初期化時エラー (想定される動作です):', err)

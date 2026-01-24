@@ -23,7 +23,7 @@ export class NonRetryableError extends Error {}
  * @param ms ミリ秒
  */
 function sleep(ms: number) {
-  return new Promise((res) => setTimeout(res, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -39,8 +39,8 @@ async function fetchWithRetry(input: RequestInfo, init: RequestInit, attempts = 
   let lastError: any
   for (let index = 0; index < attempts; index++) {
     try {
-      const res = await fetch(input, init)
-      return await processResponseWithDelay(res, index, baseDelay)
+      const response = await fetch(input, init)
+      return await processResponseWithDelay(response, index, baseDelay)
     /* istanbul ignore next */
     } catch (error) {
       if (error instanceof NonRetryableError) throw error
@@ -55,20 +55,20 @@ function classifyStatus(status: number) {
   return status >= 500 || status === 429
 }
 
-function getDelayForResponse(res: Response | null, index: number, baseDelay: number) {
-  if (!res) return baseDelay * Math.pow(2, index) + Math.random() * 100
-  const retryAfter = res.headers.get('Retry-After')
+function getDelayForResponse(response: Response | null, index: number, baseDelay: number) {
+  if (!response) return baseDelay * Math.pow(2, index) + Math.random() * 100
+  const retryAfter = response.headers.get('Retry-After')
   return retryAfter ? Number(retryAfter) * 1000 : baseDelay * Math.pow(2, index) + Math.random() * 100
 }
 
-async function processResponseWithDelay(res: Response, index: number, baseDelay: number) {
-  if (res.ok) return res
-  if (classifyStatus(res.status)) {
-    await sleep(getDelayForResponse(res, index, baseDelay))
-    throw new RetryableError(`HTTP ${res.status}`)
+async function processResponseWithDelay(response: Response, index: number, baseDelay: number) {
+  if (response.ok) return response
+  if (classifyStatus(response.status)) {
+    await sleep(getDelayForResponse(response, index, baseDelay))
+    throw new RetryableError(`HTTP ${response.status}`)
   }
-  const txt = await res.text().catch(() => '')
-  throw new NonRetryableError(`HTTP ${res.status}: ${txt}`)
+  const txt = await response.text().catch(() => '')
+  throw new NonRetryableError(`HTTP ${response.status}: ${txt}`)
 }
 
 /**
@@ -135,8 +135,8 @@ export class GitHubAdapter implements GitAdapter {
       const cached = this.blobCache.get(contentHash)
       if (cached) return { path: ch.path, sha: cached }
       const body = JSON.stringify({ content: ch.content, encoding: 'utf-8' })
-      const res = await this._fetchWithRetry(`${this.baseUrl}/git/blobs`, { method: 'POST', headers: this.headers, body }, 4, 300)
-      const index = await res.json()
+      const response = await this._fetchWithRetry(`${this.baseUrl}/git/blobs`, { method: 'POST', headers: this.headers, body }, 4, 300)
+      const index = await response.json()
       if (!index.sha) throw new NonRetryableError('blob response missing sha')
       this.blobCache.set(contentHash, index.sha)
       return { path: ch.path, sha: index.sha }
@@ -166,8 +166,8 @@ export class GitHubAdapter implements GitAdapter {
     }
     const body: any = { tree }
     if (baseTreeSha) body.base_tree = baseTreeSha
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/trees`, { method: 'POST', headers: this.headers, body: JSON.stringify(body) }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/trees`, { method: 'POST', headers: this.headers, body: JSON.stringify(body) }, 4, 300)
+    const index = await response.json()
     if (!index.sha) throw new NonRetryableError('createTree response missing sha')
     return index.sha as string
   }
@@ -185,8 +185,8 @@ export class GitHubAdapter implements GitAdapter {
     // debug: log body for troubleshooting invalid parents
     /* istanbul ignore next */
     if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('GitHub.createCommit body:', body)
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/commits`, { method: 'POST', headers: this.headers, body }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/commits`, { method: 'POST', headers: this.headers, body }, 4, 300)
+    const index = await response.json()
     if (!index.sha) throw new NonRetryableError('createCommit response missing sha')
     return index.sha as string
   }
@@ -199,10 +199,10 @@ export class GitHubAdapter implements GitAdapter {
    */
   async updateRef(reference: string, commitSha: string, force = false) {
     const body = JSON.stringify({ sha: commitSha, force })
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/refs/${reference}`, { method: 'PATCH', headers: this.headers, body }, 4, 300)
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '')
-      throw new NonRetryableError(`updateRef failed: ${res.status} ${txt}`)
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/refs/${reference}`, { method: 'PATCH', headers: this.headers, body }, 4, 300)
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '')
+      throw new NonRetryableError(`updateRef failed: ${response.status} ${txt}`)
     }
   }
 
@@ -211,8 +211,8 @@ export class GitHubAdapter implements GitAdapter {
    * @param commitSha コミット SHA
    */
   async getCommitTreeSha(commitSha: string) {
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/commits/${commitSha}`, { method: 'GET', headers: this.headers }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/commits/${commitSha}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const index = await response.json()
     if (!index || !index.tree || !index.tree.sha) throw new NonRetryableError('getCommitTreeSha: tree sha not found')
     return index.tree.sha as string
   }
@@ -222,8 +222,8 @@ export class GitHubAdapter implements GitAdapter {
    * @param ref 例: `heads/main`
    */
   async getRef(reference: string) {
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/ref/${reference}`, { method: 'GET', headers: this.headers }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/ref/${reference}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const index = await response.json()
     if (!index || !index.object || !index.object.sha) throw new NonRetryableError('getRef: sha not found')
     return index.object.sha as string
   }
@@ -235,8 +235,8 @@ export class GitHubAdapter implements GitAdapter {
    */
   async getTree(treeSha: string, recursive = false) {
     const url = `${this.baseUrl}/git/trees/${treeSha}` + (recursive ? '?recursive=1' : '')
-    const res = await this._fetchWithRetry(url, { method: 'GET', headers: this.headers }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(url, { method: 'GET', headers: this.headers }, 4, 300)
+    const index = await response.json()
     if (!index || !index.tree) throw new NonRetryableError('getTree: tree not found')
     return index.tree as any[]
   }
@@ -246,8 +246,8 @@ export class GitHubAdapter implements GitAdapter {
    * @param blobSha blob の SHA
    */
   async getBlob(blobSha: string) {
-    const res = await this._fetchWithRetry(`${this.baseUrl}/git/blobs/${blobSha}`, { method: 'GET', headers: this.headers }, 4, 300)
-    const index = await res.json()
+    const response = await this._fetchWithRetry(`${this.baseUrl}/git/blobs/${blobSha}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const index = await response.json()
     if (!index || typeof index.content === 'undefined') throw new NonRetryableError('getBlob: content not found')
     const enc = index.encoding || 'utf-8'
     let content: string
@@ -268,8 +268,8 @@ export class GitHubAdapter implements GitAdapter {
     try {
       const b = await this.getBlob(f.sha)
       return { path: f.path, content: b.content }
-    } catch (e) {
-      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot blob failed', f.path, e)
+    } catch (error) {
+      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot blob failed', f.path, error)
       return { path: f.path, content: null }
     }
   }
@@ -279,12 +279,12 @@ export class GitHubAdapter implements GitAdapter {
    * @param {string} branch ブランチ名 (default: 'main')
    */
   async fetchSnapshot(branch = 'main', concurrency = 5) {
-    const refRes = await this._fetchWithRetry(`${this.baseUrl}/git/refs/heads/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers }, 4, 300)
-    const referenceJ = await refRes.json()
+    const referenceResponse = await this._fetchWithRetry(`${this.baseUrl}/git/refs/heads/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const referenceJ = await referenceResponse.json()
     const headSha = (referenceJ && (referenceJ.object && referenceJ.object.sha ? referenceJ.object.sha : referenceJ.sha)) || branch
 
-    const treeRes = await this._fetchWithRetry(`${this.baseUrl}/git/trees/${headSha}${'?recursive=1'}`, { method: 'GET', headers: this.headers }, 4, 300)
-    const treeJ = await treeRes.json()
+    const treeResponse = await this._fetchWithRetry(`${this.baseUrl}/git/trees/${headSha}${'?recursive=1'}`, { method: 'GET', headers: this.headers }, 4, 300)
+    const treeJ = await treeResponse.json()
     const files = (treeJ && treeJ.tree) ? treeJ.tree.filter((t: any) => t.type === 'blob') : []
 
     const shas: Record<string, string> = {}

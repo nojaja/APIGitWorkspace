@@ -80,14 +80,14 @@ export class GitLabAdapter implements GitAdapter {
     // If pendingActions exist (created via createTree), use commits API
     if (this.pendingActions && this.pendingActions.length > 0) {
       const branch = 'main'
-      const res = await this.createCommitWithActions(
+      const commitResponse = await this.createCommitWithActions(
         branch,
         message,
         this.pendingActions.map((a) => ({ type: a.action === 'delete' ? 'delete' : a.action === 'create' ? 'create' : 'update', path: a.file_path, content: a.content })),
         parentSha
       )
       this.pendingActions = null
-      return res
+      return commitResponse
     }
     // Fallback: no-op commit (return parentSha)
     return parentSha
@@ -148,9 +148,9 @@ export class GitLabAdapter implements GitAdapter {
     * @returns {Promise<void>}
    */
   private async verifyParent(expectedParentSha: string, branch: string): Promise<void> {
-    const branchRes = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
-    if (branchRes && branchRes.ok) {
-      const bj = await branchRes.json().catch(() => null)
+    const branchResponse = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+    if (branchResponse && branchResponse.ok) {
+      const bj = await branchResponse.json().catch(() => null)
       const remoteHead = bj && bj.commit && (bj.commit.id || bj.commit.sha) ? (bj.commit.id || bj.commit.sha) : null
       if (remoteHead && remoteHead !== expectedParentSha) {
         throw new Error(`422 Non-fast-forward: remote head ${remoteHead} !== expected ${expectedParentSha}`)
@@ -180,9 +180,9 @@ export class GitLabAdapter implements GitAdapter {
    * Post commit request and parse response
     * @returns {Promise<any>}
     */
-    private async postCommit(url: string, body: string) {
-    const res = await this.fetchWithRetry(url, { method: 'POST', headers: this.headers, body })
-    const text = await res.text().catch(() => '')
+  private async postCommit(url: string, body: string) {
+    const response = await this.fetchWithRetry(url, { method: 'POST', headers: this.headers, body })
+    const text = await response.text().catch(() => '')
     return this.parseCommitResponse(text)
   }
 
@@ -195,18 +195,18 @@ export class GitLabAdapter implements GitAdapter {
    */
   private async fetchWithRetry(url: string, options: RequestInit, retries = this.maxRetries): Promise<Response> {
     for (let attempt = 1; attempt <= retries; attempt++) {
-      let res: Response | null = null
+      let response: Response | null = null
       try {
         // If fetch throws synchronously (e.g. mocked impl), this will be caught here
         // and handled as a transient error to be retried.
-        res = await fetch(url, options) as Response
-      } catch (e: any) {
-        if (attempt === retries) throw e
+        response = await fetch(url, options) as Response
+      } catch (error: any) {
+        if (attempt === retries) throw error
         await this._waitAttempt(attempt)
         continue
       }
 
-      if (!res || !this.isRetryableStatus(res.status) || attempt === retries) return res
+      if (!response || !this.isRetryableStatus(response.status) || attempt === retries) return response
       await this._waitAttempt(attempt)
     }
     throw new Error('fetchWithRetry: unexpected exit')
@@ -278,7 +278,7 @@ export class GitLabAdapter implements GitAdapter {
       await this.verifyParent(expectedParentSha, branch)
     } catch (error: any) {
       if (error && String(error).includes('422')) throw error
-      // otherwise continue
+      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('verifyParent skipped:', error)
     }
   }
 
@@ -310,13 +310,15 @@ export class GitLabAdapter implements GitAdapter {
    */
   private async _determineHeadSha(branch: string): Promise<string> {
     try {
-      const brRes = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
-      if (brRes && brRes.ok) {
-        const bj = await brRes.json().catch(() => null)
-        return (bj && bj.commit && (bj.commit.id || bj.commit.sha)) ? (bj.commit.id || bj.commit.sha) : branch
-      }
-    } catch (_) {
-      // ignore
+      const branchResponse = await this.fetchWithRetry(`${this.baseUrl}/repository/branches/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+      if (!branchResponse?.ok) return branch
+
+      const branchJson = await branchResponse.json().catch(() => null)
+      const commit = branchJson?.commit
+      const remoteHead = commit?.id ?? commit?.sha
+      return remoteHead ?? branch
+    } catch (error) {
+      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('determineHeadSha fallback', error)
     }
     return branch
   }
@@ -327,8 +329,8 @@ export class GitLabAdapter implements GitAdapter {
    * @returns {Promise<{shas:Record<string,string>,fileSet:Set<string>}>}
    */
   private async _fetchTreeAndBuildShas(branch: string): Promise<{ shas: Record<string, string>; fileSet: Set<string> }> {
-    const treeRes = await this.fetchWithRetry(`${this.baseUrl}/repository/tree?recursive=true&ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
-    const treeJ = await treeRes.json()
+    const treeResponse = await this.fetchWithRetry(`${this.baseUrl}/repository/tree?recursive=true&ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+    const treeJ = await treeResponse.json()
     const files = Array.isArray(treeJ) ? treeJ.filter((t: any) => t.type === 'blob') : []
     return this._buildShasAndFileSet(files)
   }
@@ -371,14 +373,14 @@ export class GitLabAdapter implements GitAdapter {
    */
   private async _fetchFileRaw(path: string, branch: string) {
     try {
-      const rawRes = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
-      if (!rawRes.ok) {
-        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', path, rawRes.status)
+      const rawResponse = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
+      if (!rawResponse.ok) {
+        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', path, rawResponse.status)
         return null
       }
-      return await rawRes.text()
-    } catch (e) {
-      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', path, e)
+      return await rawResponse.text()
+    } catch (error) {
+      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', path, error)
       return null
     }
   }

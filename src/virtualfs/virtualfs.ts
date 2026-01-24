@@ -476,32 +476,32 @@ export class VirtualFS {
   private async _changesForIndexFile(p: string, infoTxt: string | null): Promise<Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }>> {
     const out: Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }> = []
     if (!infoTxt) return out
-    let e: any = undefined
-    try { e = JSON.parse(infoTxt) } catch (_) { return out }
-    if (!e) return out
+    let entry: any = undefined
+    try { entry = JSON.parse(infoTxt) } catch (_) { return out }
+    if (!entry) return out
     const blob = await this.backend.readBlob(p, 'workspace')
-    return this._changesFromIndexEntry(e, p, blob)
+    return this._changesFromIndexEntry(entry, p, blob)
   }
 
   /**
    * インデックスエントリオブジェクトと workspace blob から変更リストを返す（同期処理）。
-   * @param e index entry object
+   * @param entry index entry object
    * @param p file path
    * @param blob workspace blob content or null
     * @returns {Array<{type:'create'|'update',path:string,content?:string,baseSha?:string}>}
    */
-  private _changesFromIndexEntry(e: any, p: string, blob: string | null) {
+  private _changesFromIndexEntry(entry: any, p: string, blob: string | null) {
     const out: Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }> = []
     // created in workspace
-    if (e.state === 'added') {
+    if (entry.state === 'added') {
       if (blob == null) return out
       out.push({ type: 'create', path: p, content: blob })
       return out
     }
     // consider modified/conflict or entries with workspaceSha
-    if (!this._isEntryConsidered(e)) return out
-    if (e.baseSha) {
-      if (blob !== null) out.push({ type: 'update', path: p, content: blob, baseSha: e.baseSha })
+    if (!this._isEntryConsidered(entry)) return out
+    if (entry.baseSha) {
+      if (blob !== null) out.push({ type: 'update', path: p, content: blob, baseSha: entry.baseSha })
     } else {
       if (blob == null) return out
       out.push({ type: 'create', path: p, content: blob })
@@ -511,11 +511,11 @@ export class VirtualFS {
 
   /**
    * 指定エントリが変更リストに含めるべきか判定します。
-   * @param e インデックスエントリ
+   * @param entry インデックスエントリ
    * @returns {boolean}
    */
-  private _isEntryConsidered(e: any) {
-    return e.state === 'modified' || e.state === 'conflict' || (!!e.workspaceSha && e.state !== 'added')
+  private _isEntryConsidered(entry: any) {
+    return entry.state === 'modified' || entry.state === 'conflict' || (!!entry.workspaceSha && entry.state !== 'added')
   }
 
 
@@ -759,27 +759,27 @@ export class VirtualFS {
    * リモート側で削除されたエントリをローカルに反映します。
    * @returns {Promise<void>}
    */
-  private async _handleRemoteDeletion(p: string, e: any, _remoteShas: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>) {
+  private async _handleRemoteDeletion(p: string, indexEntry: any, _remoteShas: Record<string, string>, conflicts: Array<import('./types').ConflictEntry>) {
     let localWorkspace: { sha: string; content: string } | undefined = undefined
     const wsBlob = await this.backend.readBlob(p, 'workspace')
     if (wsBlob !== null) {
-      const wsSha = e?.workspaceSha || await this.shaOf(wsBlob)
+      const wsSha = indexEntry?.workspaceSha || await this.shaOf(wsBlob)
       localWorkspace = { sha: wsSha, content: wsBlob }
     }
     // If the index entry has no baseSha it was created locally (added) and not
     // present in the remote base. In that case, remote lacking the path is NOT
     // a conflict — keep the local addition as-is.
-    if (!e || !e.baseSha) {
+    if (!indexEntry || !indexEntry.baseSha) {
       return
     }
 
-    if (!localWorkspace || localWorkspace.sha === e.baseSha) {
+    if (!localWorkspace || localWorkspace.sha === indexEntry.baseSha) {
       // safe to delete locally
       await this.backend.deleteBlob(p, 'info')
       // backend manages base segment persistence; remove blobs from backend
       await this.backend.deleteBlob(p)
     } else {
-      conflicts.push({ path: p, baseSha: e.baseSha, workspaceSha: localWorkspace?.sha })
+      conflicts.push({ path: p, baseSha: indexEntry.baseSha, workspaceSha: localWorkspace?.sha })
     }
   }
 
@@ -805,7 +805,7 @@ export class VirtualFS {
     if (input.parentSha && typeof (adapter as any).getCommitTreeSha === 'function') {
       try {
         baseTreeSha = await (adapter as any).getCommitTreeSha(input.parentSha)
-      } catch (e) {
+      } catch (error) {
         // ignore and proceed without base_tree if fetching fails
         baseTreeSha = undefined
       }
@@ -858,18 +858,18 @@ export class VirtualFS {
     // If adapter supports createCommitWithActions (GitLab style), use it directly
     if ((adapter as any).createCommitWithActions) {
       (input as any).message = messageWithKey
-      const res = await this._pushWithActions(adapter, input, branch)
+      const actionResult = await this._pushWithActions(adapter, input, branch)
       this.lastCommitKey = input.commitKey
       await this.saveIndex()
-      return res
+      return actionResult
     }
 
     // Fallback to GitHub-style flow
     (input as any).message = messageWithKey
-    const res = await this._pushWithGitHubFlow(adapter, input, branch)
+    const gitHubFlowResult = await this._pushWithGitHubFlow(adapter, input, branch)
     this.lastCommitKey = input.commitKey
     await this.saveIndex()
-    return res
+    return gitHubFlowResult
   }
 
   /**
@@ -966,11 +966,11 @@ export class VirtualFS {
     for (const it of infos) {
       const p = it.path
       if (!(p in remoteShas)) {
-        let e: any = undefined
+        let indexEntry: any = undefined
         if (it.info) {
-          e = JSON.parse(it.info)
+          indexEntry = JSON.parse(it.info)
         }
-        await this._handleRemoteDeletion(p, e, remoteShas, conflicts)
+        await this._handleRemoteDeletion(p, indexEntry, remoteShas, conflicts)
       }
     }
   }

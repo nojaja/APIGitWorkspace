@@ -18,24 +18,24 @@ export async function clearOPFS(page: Page) {
     if ((navigator as any).storage && (navigator as any).storage.getDirectory) return;
     const DB_NAME = 'opfs_mock';
 
-    function openDb() {
-      return new Promise((resolve, reject) => {
+    function openDb(): Promise<IDBDatabase> {
+      return new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, 1);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
         };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        req.onsuccess = () => resolve(req.result as IDBDatabase);
+        req.onerror = () => reject(req.error ?? new Error('IndexedDB open error'));
       });
     }
 
-    function makeFileHandle(path) {
+    function makeFileHandle(path: string) {
       return {
         kind: 'file',
         async getFile() {
           const db = await openDb();
-          return new Promise((resolve) => {
+          return new Promise<Blob>((resolve) => {
             const tx = db.transaction('files', 'readonly');
             const store = tx.objectStore('files');
             const r = store.get(path);
@@ -44,13 +44,13 @@ export async function clearOPFS(page: Page) {
           });
         },
         async createWritable() {
-          const chunks = [];
+          const chunks: string[] = [];
           return {
-            async write(data) { chunks.push(data); },
+            async write(data: BlobPart) { chunks.push(typeof data === 'string' ? data : String(data)); },
             async close() {
               const content = chunks.join('');
               const db = await openDb();
-              return new Promise((resolve) => {
+              return new Promise<void>((resolve) => {
                 const tx = db.transaction('files', 'readwrite');
                 const store = tx.objectStore('files');
                 store.put(content, path);
@@ -63,14 +63,14 @@ export async function clearOPFS(page: Page) {
       };
     }
 
-    function makeDirHandle(prefix) {
+    function makeDirHandle(prefix: string) {
       return {
         kind: 'directory',
-        async getFileHandle(name, opts) {
+        async getFileHandle(name: string, opts?: { create?: boolean }) {
           const p = prefix ? prefix + '/' + name : name;
           if (opts && opts.create) {
             const db = await openDb();
-            await new Promise((resolve) => {
+            await new Promise<void>((resolve) => {
               const tx = db.transaction('files', 'readwrite');
               tx.objectStore('files').put('', p);
               tx.oncomplete = () => resolve();
@@ -79,7 +79,7 @@ export async function clearOPFS(page: Page) {
           }
           return makeFileHandle(p);
         },
-        async getDirectoryHandle(name, opts) {
+        async getDirectoryHandle(name: string, _opts?: { create?: boolean }) {
           const p = prefix ? prefix + '/' + name : name;
           return makeDirHandle(p);
         },
@@ -90,12 +90,12 @@ export async function clearOPFS(page: Page) {
           const req = store.openCursor();
           const seen = new Set();
           const prefixPath = prefix ? prefix + '/' : '';
-          const results = [];
-          await new Promise((resolve) => {
-            req.onsuccess = (ev) => {
-              const cur = ev.target.result;
-              if (!cur) { resolve(null); return; }
-              const key = cur.key;
+          const results: Array<[string, ReturnType<typeof makeFileHandle> | ReturnType<typeof makeDirHandle>]> = [];
+          await new Promise<void>((resolve) => {
+            req.onsuccess = (ev: Event) => {
+              const cur = (ev.target as IDBRequest<IDBCursorWithValue | null>).result;
+              if (!cur) { resolve(); return; }
+              const key = String(cur.key);
               if (!key.startsWith(prefixPath)) { cur.continue(); return; }
               const rel = key.substring(prefixPath.length);
               const first = rel.split('/')[0];
@@ -107,21 +107,21 @@ export async function clearOPFS(page: Page) {
               }
               cur.continue();
             };
-            req.onerror = () => resolve(null);
+            req.onerror = () => resolve();
           });
           for (const r of results) yield r;
         },
-        async removeEntry(name, opts) {
+        async removeEntry(name: string, _opts?: { recursive?: boolean }) {
           const db = await openDb();
           const keyPrefix = prefix ? prefix + '/' + name : name;
-          return new Promise((resolve) => {
+          return new Promise<void>((resolve) => {
             const tx = db.transaction('files', 'readwrite');
             const store = tx.objectStore('files');
             const req = store.openCursor();
-            req.onsuccess = (ev) => {
-              const cur = ev.target.result;
+            req.onsuccess = (ev: Event) => {
+              const cur = (ev.target as IDBRequest<IDBCursorWithValue | null>).result;
               if (!cur) { resolve(); return; }
-              const key = cur.key;
+              const key = String(cur.key);
               if (key === keyPrefix || key.startsWith(keyPrefix + '/')) cur.delete();
               cur.continue();
             };

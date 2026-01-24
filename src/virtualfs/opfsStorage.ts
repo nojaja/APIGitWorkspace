@@ -118,17 +118,17 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * @returns {Promise<any>} 生成されたディレクトリハンドル
    */
   private async ensureDir(root: any, parts: string[]): Promise<any> {
-    let dir = root
-    for (const p of parts) {
-      if (dir && typeof dir.getDirectoryHandle === 'function') {
-        dir = await dir.getDirectoryHandle(p, { create: true })
-      } else if (dir && typeof dir.getDirectory === 'function') {
-        dir = await dir.getDirectory(p, { create: true })
+    let directory = root
+    for (const part of parts) {
+      if (directory && typeof directory.getDirectoryHandle === 'function') {
+        directory = await directory.getDirectoryHandle(part, { create: true })
+      } else if (directory && typeof directory.getDirectory === 'function') {
+        directory = await directory.getDirectory(part, { create: true })
       } else {
         throw new Error(ERR_OPFS_DIR_API)
       }
     }
-    return dir
+    return directory
   }
 
   /**
@@ -141,8 +141,8 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    */
   private async _readIndexMetadata(root: any): Promise<string | null> {
     try {
-      const hasDirApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
-      if (hasDirApi) {
+      const hasDirectoryApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
+      if (hasDirectoryApi) {
         const scoped = await this.traverseDir(root, this.rootDir.split('/').filter(Boolean))
         const fh = await scoped.getFileHandle('index')
         const file = await fh.getFile()
@@ -222,9 +222,9 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     const meta: any = { head: index.head }
     if (index.lastCommitKey) meta.lastCommitKey = index.lastCommitKey
 
-    const hasDirApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
+    const hasDirectoryApi = typeof (root as any).getDirectoryHandle === 'function' || typeof (root as any).getDirectory === 'function'
     const payload = JSON.stringify(meta)
-    if (hasDirApi) {
+    if (hasDirectoryApi) {
       const parts = this.rootDir.split('/').filter(Boolean)
       const parent = await this.ensureDir(root, parts)
       const fh = await parent.getFileHandle('index', { create: true })
@@ -325,8 +325,8 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   private async _writeToPrefix(root: any, prefix: string, filepath: string, content: string): Promise<void> {
     const fullPath = this.rootDir ? `${this.rootDir}/${prefix}/${filepath}` : `${prefix}/${filepath}`
     const parts = fullPath.split('/').filter(Boolean)
-    const dirParts = parts.slice(0, parts.length - 1)
-    const parent = await this.ensureDir(root, dirParts)
+    const directoryParts = parts.slice(0, parts.length - 1)
+    const parent = await this.ensureDir(root, directoryParts)
     const fh = await parent.getFileHandle(parts[parts.length - 1], { create: true })
     const writable = await fh.createWritable()
     await writable.write(content)
@@ -426,24 +426,24 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   private async removeAtPrefix(root: any, prefix: string, filepath: string): Promise<void> {
     const full = this.rootDir ? `${this.rootDir}/${prefix}/${filepath}` : `${prefix}/${filepath}`
     const parts = full.split('/').filter(Boolean)
-    let dir: any
+    let directory: any
     // ディレクトリが存在しない場合（NotFound）は削除対象なしとして終了
     try {
-      dir = await this.traverseDir(root, parts.slice(0, parts.length - 1))
+      directory = await this.traverseDir(root, parts.slice(0, parts.length - 1))
     } catch (_) {
       return
     }
     const name = parts[parts.length - 1]
-    if (typeof dir.removeEntry === 'function') {
+    if (typeof directory.removeEntry === 'function') {
       try {
-        await dir.removeEntry(name)
+        await directory.removeEntry(name)
       } catch (_) {
         // removeEntryが失敗しても無視（存在しない等）
       }
       return
     }
-    if (typeof dir.getFileHandle === 'function') {
-      await this.tryRemoveFileHandle(dir, name)
+    if (typeof directory.getFileHandle === 'function') {
+      await this.tryRemoveFileHandle(directory, name)
       
     }
   }
@@ -460,8 +460,8 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     try {
       const fullPath = this.rootDir ? `${this.rootDir}/${prefix}/${filepath}` : `${prefix}/${filepath}`
       const parts = fullPath.split('/').filter(Boolean)
-      const dir = await this.traverseDir(root, parts.slice(0, parts.length - 1))
-      const fh = await dir.getFileHandle(parts[parts.length - 1])
+      const directory = await this.traverseDir(root, parts.slice(0, parts.length - 1))
+      const fh = await directory.getFileHandle(parts[parts.length - 1])
       return await this._readFileFromHandle(fh)
     } catch (_) {
       return null
@@ -476,17 +476,17 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * @returns The final directory handle
    */
   private async traverseDir(root: any, parts: string[]): Promise<any> {
-    let dir = root
-    for (const p of parts) {
-      if (dir && typeof dir.getDirectoryHandle === 'function') {
-        dir = await dir.getDirectoryHandle(p)
-      } else if (dir && typeof dir.getDirectory === 'function') {
-        dir = await dir.getDirectory(p)
+    let directory = root
+    for (const part of parts) {
+      if (directory && typeof directory.getDirectoryHandle === 'function') {
+        directory = await directory.getDirectoryHandle(part)
+      } else if (directory && typeof directory.getDirectory === 'function') {
+        directory = await directory.getDirectory(part)
       } else {
         throw new Error(ERR_OPFS_DIR_API)
       }
     }
-    return dir
+    return directory
   }
 
   /**
@@ -496,9 +496,9 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   private async listFilesAtPrefix(root: any, prefix: string): Promise<string[]> {
     try {
       const parts = this.rootDir ? this.rootDir.split('/').filter(Boolean).concat([prefix]) : [prefix]
-      const dir = await this.traverseDir(root, parts)
+      const directory = await this.traverseDir(root, parts)
       const results: string[] = []
-      await this._recurseListDir(dir, '', results)
+      await this._recurseListDir(directory, '', results)
       return results
     } catch (_) {
       return []
@@ -562,8 +562,8 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     }
     if (typeof d.getDirectoryHandle === 'function') {
       try {
-        const childDir = await d.getDirectoryHandle(name)
-        await this._recurseListDir(childDir, childPath, results)
+        const childDirectory = await d.getDirectoryHandle(name)
+        await this._recurseListDir(childDirectory, childPath, results)
       } catch (error) {
         return
       }
@@ -631,9 +631,9 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
    * Try to remove a file via its file handle.
    * @returns {Promise<boolean>} true when removed, false otherwise
    */
-  private async tryRemoveFileHandle(dir: any, name: string): Promise<boolean> {
+  private async tryRemoveFileHandle(directory: any, name: string): Promise<boolean> {
     try {
-      const fh = await dir.getFileHandle(name)
+      const fh = await directory.getFileHandle(name)
       if (fh && typeof (fh as any).remove === 'function') {
         await (fh as any).remove()
         return true

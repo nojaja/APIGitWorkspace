@@ -35,12 +35,12 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
   }
   // legacy canUseOpfs removed; use static canUse() instead
   /**
-   * コンストラクタ。互換性のために `dir` 引数を受け取るが無視する。
-   * @param _dir 任意のディレクトリ文字列（使用しない）
+   * コンストラクタ。互換性のためにディレクトリ名を受け取るが無視する。
+   * @param directory 任意のディレクトリ文字列（使用しない）
    */
-  constructor(dir?: string) {
-    // If caller provides a dir, share storage by that name. If omitted, create isolated store per instance.
-    this.rootKey = dir ?? `__inmem_${Math.random().toString(36).slice(2)}`
+  constructor(directory?: string) {
+    // If caller provides a directory name, share storage by that name. If omitted, create isolated store per instance.
+    this.rootKey = directory ?? `__inmem_${Math.random().toString(36).slice(2)}`
     if (!InMemoryStorage.stores.has(this.rootKey)) {
       InMemoryStorage.stores.set(this.rootKey, {
         index: { head: '', entries: {} },
