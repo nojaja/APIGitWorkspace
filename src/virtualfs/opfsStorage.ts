@@ -27,8 +27,76 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
   /** 利用可能なサブディレクトリ名の候補を返す
    * @returns {string[]} available root directories
    */
+  private static _cachedRoots: string[] | null = null
+
+  /**
+   * Return available root folder names for OPFS. This method is synchronous
+   * to satisfy the StorageBackendConstructor contract; it returns a cached
+   * hint if available and kicks off an async probe to populate the cache.
+   * If no information is available synchronously an empty array is returned.
+   */
   static availableRoots(): string[] {
-    return ['apigit_storage']
+    try {
+      const g: any = globalThis as any
+
+      // Return cached if available
+      if (Array.isArray(OpfsStorage._cachedRoots) && OpfsStorage._cachedRoots.length) return OpfsStorage._cachedRoots
+
+      // Allow tests/runtime to provide a synchronous hint array
+      if (Array.isArray(g.__opfs_roots__)) {
+        OpfsStorage._cachedRoots = g.__opfs_roots__
+        return OpfsStorage._cachedRoots
+      }
+
+      // Kick off async discovery if environment exposes navigator.storage.getDirectory
+      // or originPrivateFileSystem.getDirectory. Do not block — populate cache when done.
+      const nav = (g as any).navigator
+      const tryProbe = async () => {
+        try {
+          let root: any = null
+          if (nav && nav.storage && typeof nav.storage.getDirectory === 'function') {
+            root = await nav.storage.getDirectory()
+          } else if (g.originPrivateFileSystem && typeof g.originPrivateFileSystem.getDirectory === 'function') {
+            root = await g.originPrivateFileSystem.getDirectory()
+          }
+          if (!root) return
+
+          const names: string[] = []
+          try {
+            for await (const pair of (root as any).entries()) {
+              const name = Array.isArray(pair) ? pair[0] : (pair.name || '')
+              const handle = Array.isArray(pair) ? pair[1] : (pair[1] || pair)
+              if (!name) continue
+              // treat directory-like handles as roots
+              if ((handle && handle.kind === 'directory') || typeof (handle && handle.getDirectoryHandle) === 'function' || typeof (handle && handle.getDirectory) === 'function') {
+                names.push(name)
+              }
+            }
+          } catch (e) {
+            // entries() may not be available; attempt keys() fallback
+            try {
+              for await (const n of (root as any).keys()) {
+                names.push(n)
+              }
+            } catch (_e) {
+              // ignore
+            }
+          }
+
+          if (names.length) OpfsStorage._cachedRoots = names
+        } catch (_) {
+          // ignore probe errors
+        }
+      }
+
+      // Start probe but do not await
+      tryProbe()
+    } catch (_) {
+      // ignore
+    }
+
+    // Conservative default: unknown synchronously -> return empty list
+    return []
   }
 
   /**

@@ -11,7 +11,7 @@ type AnyLib = any;
 // Import library source directly so esbuild will include it in the examples bundle.
 // Import library source so esbuild bundles proper ESM exports (GitHubAdapter/GitLabAdapter/VirtualFS)
 // Import named exports and assemble a `lib` object so properties are present at runtime.
-import { GitHubAdapter, GitLabAdapter, VirtualFS, OpfsStorage, IndexedDbStorage } from 'browser-git-ops';
+import * as GitOpsLib from 'browser-git-ops';
 
 function el(id: string) { return document.getElementById(id)! }
 
@@ -43,6 +43,8 @@ function renderUI() {
         <h2>操作</h2>
           <button id="connectOpfs">opfsStorageを接続</button>
           <button id="connectIndexedDb">IndexedDbStorageを接続</button>
+          <button id="opfsRoots">opfs の availableRoots を表示</button>
+          <button id="indexedDbRoots">IndexedDb の availableRoots を表示</button>
           <button id="listAdapters">アダプタ情報を表示</button>
           <button id="fetchRemote">リモート一覧をfetch</button>
           <button id="resolveConflict">競合を解消済にする</button>
@@ -129,11 +131,11 @@ async function main() {
   // Use the bundled library at build time. This replaces runtime dynamic loading.
     // Use the bundled library at build time. Assemble `lib` from named imports.
     const lib: AnyLib = {
-      GitHubAdapter: GitHubAdapter,
-      GitLabAdapter: GitLabAdapter,
-      VirtualFS: VirtualFS,
-      OpfsStorage: OpfsStorage,
-      IndexedDbStorage: IndexedDbStorage,
+      GitHubAdapter: (GitOpsLib as any).GitHubAdapter,
+      GitLabAdapter: (GitOpsLib as any).GitLabAdapter,
+      VirtualFS: (GitOpsLib as any).VirtualFS,
+      OpfsStorage: (GitOpsLib as any).OpfsStorage,
+      IndexedDatabaseStorage: (GitOpsLib as any).IndexedDatabaseStorage || (GitOpsLib as any).IndexedDbStorage || (GitOpsLib as any).IndexedDatabase || (GitOpsLib as any).IndexedDatabaseStorage,
     }
 
   // keep a reference to the created vfs so other buttons reuse it
@@ -255,10 +257,11 @@ async function main() {
           appendOutput('[connectOpfsBtn]バンドルに OpfsStorage が含まれていません')
           return
         }
-        const backend = new lib.OpfsStorage()
+        const rootNameInput = (prompt('OPFS のルート名を入力してください（空欄でデフォルト）') || '').trim()
+        const backend = rootNameInput ? new lib.OpfsStorage(rootNameInput) : new lib.OpfsStorage()
         const vfs = new lib.VirtualFS({ backend })
         currentVfs = vfs
-        appendOutput('[connectOpfsBtn]VirtualFS を作成し OpfsStorage を接続しました')
+        appendOutput('[connectOpfsBtn]VirtualFS を作成し OpfsStorage を接続しました' + (rootNameInput ? ` (root=${rootNameInput})` : ''))
         try {
           await vfs.init()
           appendOutput('[connectOpfsBtn]VirtualFS.init() 実行済み (OpfsStorage)')
@@ -279,14 +282,16 @@ async function main() {
           appendOutput('[connectIndexedDbBtn]バンドルに VirtualFS が含まれていません')
           return
         }
-        if (!lib.IndexedDbStorage) {
+        const IdxCtor: any = lib.IndexedDatabaseStorage || (lib as any).IndexedDbStorage || (lib as any).IndexedDatabaseStorage || (lib as any).IndexedDatabase
+        if (!IdxCtor) {
           appendOutput('[connectIndexedDbBtn]バンドルに IndexedDbStorage が含まれていません')
           return
         }
-        const backend = new lib.IndexedDbStorage()
+        const dbNameInput = (prompt('IndexedDB の DB 名を入力してください（空欄でデフォルト）') || '').trim()
+        const backend = dbNameInput ? new IdxCtor(dbNameInput) : new IdxCtor()
         const vfs = new lib.VirtualFS({ backend })
         currentVfs = vfs
-        appendOutput('[connectIndexedDbBtn]VirtualFS を作成し IndexedDbStorage を接続しました')
+        appendOutput('[connectIndexedDbBtn]VirtualFS を作成し IndexedDbStorage を接続しました' + (dbNameInput ? ` (db=${dbNameInput})` : ''))
         try {
           await vfs.init()
           appendOutput('[connectIndexedDbBtn]VirtualFS.init() 実行済み (IndexedDbStorage)')
@@ -298,6 +303,84 @@ async function main() {
       }
     })()
   })
+
+    const opfsRootsBtn = el('opfsRoots') as HTMLButtonElement
+    opfsRootsBtn.addEventListener('click', async () => {
+      appendOutput('[opfsRoots]availableRoots を取得します...')
+      try {
+        if (!lib.OpfsStorage) {
+          appendOutput('[opfsRoots]バンドルに OpfsStorage が含まれていません')
+          return
+        }
+        const OpfsCtor: any = lib.OpfsStorage
+        if (OpfsCtor && typeof OpfsCtor.availableRoots === 'function') {
+          const roots = OpfsCtor.availableRoots()
+          if (Array.isArray(roots) && roots.length) {
+            appendOutput('[opfsRoots]availableRoots: ' + JSON.stringify(roots))
+            return
+          }
+        }
+
+        // Fallback: try async probe via instance.getOpfsRoot() and inspect entries/keys
+        try {
+          const inst: any = new OpfsCtor()
+          if (inst && typeof inst.getOpfsRoot === 'function') {
+            const root = await inst.getOpfsRoot()
+            const names: string[] = []
+            if (root) {
+              try {
+                for await (const pair of (root as any).entries()) {
+                  const name = Array.isArray(pair) ? pair[0] : (pair && pair.name) || ''
+                  const handle = Array.isArray(pair) ? pair[1] : (pair && pair[1]) || pair
+                  if (!name) continue
+                  if ((handle && handle.kind === 'directory') || typeof (handle && handle.getDirectoryHandle) === 'function' || typeof (handle && handle.getDirectory) === 'function') {
+                    names.push(name)
+                  }
+                }
+              } catch (e) {
+                try {
+                  for await (const n of (root as any).keys()) {
+                    names.push(n)
+                  }
+                } catch (_e) {
+                  // ignore
+                }
+              }
+            }
+            if (names.length) {
+              appendOutput('[opfsRoots]availableRoots: ' + JSON.stringify(names))
+              try { (globalThis as any).__opfs_roots__ = names } catch (_) {}
+              return
+            }
+          }
+        } catch (err) {
+          // ignore probe errors
+        }
+        appendOutput('[opfsRoots]availableRoots: []')
+      } catch (e) {
+        appendOutput('[opfsRoots]取得失敗: ' + String(e))
+      }
+    })
+
+    const indexedDbRootsBtn = el('indexedDbRoots') as HTMLButtonElement
+    indexedDbRootsBtn.addEventListener('click', async () => {
+      appendOutput('[indexedDbRoots]availableRoots を取得します...')
+      try {
+        const IdxCtor: any = lib.IndexedDatabaseStorage || (lib as any).IndexedDbStorage || (lib as any).IndexedDatabaseStorage || (lib as any).IndexedDatabase
+        if (!IdxCtor) {
+          appendOutput('[indexedDbRoots]バンドルに IndexedDbStorage が含まれていません')
+          return
+        }
+        if (IdxCtor && typeof IdxCtor.availableRoots === 'function') {
+          const roots = IdxCtor.availableRoots()
+          appendOutput('[indexedDbRoots]availableRoots: ' + JSON.stringify(roots))
+        } else {
+          appendOutput('[indexedDbRoots]IndexedDbStorage に availableRoots() が実装されていません')
+        }
+      } catch (e) {
+        appendOutput('[indexedDbRoots]取得失敗: ' + String(e))
+      }
+    })
 
   const listAdaptersBtn = el('listAdapters') as HTMLButtonElement
   listAdaptersBtn.addEventListener('click', () => {

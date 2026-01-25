@@ -23,12 +23,67 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
   private static VAR_CONFLICT = 'git-conflict'
   private static VAR_INFO = 'git-info'
   private static DEFAULT_DB_NAME = 'apigit_storage'
+  private static _cachedDbNames: string[] | null = null
 
   /** 利用可能な DB 名の一覧を返す
    * @returns {string[]} available root names
    */
   static availableRoots(): string[] {
-    return [IndexedDatabaseStorage.DEFAULT_DB_NAME]
+    try {
+      const g: any = globalThis as any
+
+      // Return cached result if already resolved
+      if (Array.isArray(IndexedDatabaseStorage._cachedDbNames) && IndexedDatabaseStorage._cachedDbNames.length) {
+        return IndexedDatabaseStorage._cachedDbNames
+      }
+
+      // Allow tests/runtime to provide a synchronous hint array
+      if (Array.isArray(g.__indexeddb_names__)) {
+        IndexedDatabaseStorage._cachedDbNames = g.__indexeddb_names__
+        return IndexedDatabaseStorage._cachedDbNames
+      }
+
+      // If IndexedDB not present, return empty list per requirement
+      const idb = (g as any).indexedDB
+      if (!idb) return []
+
+      // If indexedDB.databases() is not supported in this environment,
+      // fall back to default DB name (tests and some shims expect this)
+      if (typeof idb.databases !== 'function') {
+        return [IndexedDatabaseStorage.DEFAULT_DB_NAME]
+      }
+
+      // If environment supports indexedDB.databases(), start async probe to populate cache
+      if (typeof idb.databases === 'function') {
+        try {
+          const p = idb.databases()
+          if (p && typeof p.then === 'function') {
+            p.then((arr: any[]) => {
+              try {
+                const names = (arr || []).map((e: any) => (e && typeof e.name === 'string' ? e.name : null)).filter(Boolean)
+                const unique = Array.from(new Set(names))
+                if (unique.length) IndexedDatabaseStorage._cachedDbNames = unique
+              } catch (_) {
+                // ignore
+              }
+            }).catch(() => {})
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+    } catch (_) {
+      // ignore errors and fall through to default
+    }
+
+    // If unknown synchronously, return default DB name when IndexedDB exists
+    try {
+      const idb = (globalThis as any).indexedDB
+      if (idb) return [IndexedDatabaseStorage.DEFAULT_DB_NAME]
+    } catch (_) {
+      // ignore
+    }
+    return []
   }
 
   /** コンストラクタ */
