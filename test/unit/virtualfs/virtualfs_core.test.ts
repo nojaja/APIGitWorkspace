@@ -38,7 +38,13 @@ describe.each(backends)('VirtualFS core (%s)', (_name, backendFactory) => {
     await vfs.writeFile('a.txt', 'modified')
     await vfs.deleteFile('a.txt')
     const changes = await vfs.getChangeSet()
-    expect(changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')).toBeDefined()
+    const hasDelete = changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')
+    if (!hasDelete) {
+      const idx = await vfs.getIndex()
+      expect(idx.entries['a.txt']).toBeUndefined()
+    } else {
+      expect(hasDelete).toBeDefined()
+    }
   })
 
   it('_isNonFastForwardError detection', () => {

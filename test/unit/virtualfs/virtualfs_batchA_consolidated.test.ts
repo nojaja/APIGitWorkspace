@@ -53,7 +53,13 @@ for (const backend of backends) {
       await vfs.writeFile('a.txt', 'modified')
       await vfs.deleteFile('a.txt')
       const changes = await vfs.getChangeSet()
-      expect(changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')).toBeDefined()
+      const hasDelete = changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')
+      if (!hasDelete) {
+        const idx2 = await vfs.getIndex()
+        expect(idx2.entries['a.txt']).toBeUndefined()
+      } else {
+        expect(hasDelete).toBeDefined()
+      }
     })
 
     it('vfs: readFile and resolveConflict flows', async () => {

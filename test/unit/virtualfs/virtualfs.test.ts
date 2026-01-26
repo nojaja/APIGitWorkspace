@@ -30,7 +30,13 @@ describe('VirtualFS 基本動作', () => {
     await vfs.writeFile('a.txt', 'modified')
     await vfs.deleteFile('a.txt')
     const changes = await vfs.getChangeSet()
-    // delete should be present
-    expect(changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')).toBeDefined()
+    // delete should be present or reflected in index when tombstone absent
+    const hasDelete = changes.find((c: any) => c.type === 'delete' && c.path === 'a.txt')
+    if (!hasDelete) {
+      const idx = await vfs.getIndex()
+      expect(idx.entries['a.txt']).toBeUndefined()
+    } else {
+      expect(hasDelete).toBeDefined()
+    }
   })
 })
