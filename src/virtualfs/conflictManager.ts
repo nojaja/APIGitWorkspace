@@ -35,21 +35,12 @@ export class ConflictManager {
   async resolveConflict(filepath: string): Promise<boolean> {
     try {
       const remoteContent = await this.backend.readBlob(filepath, 'conflict')
-      let ie: any = undefined
-      const infoTxt = await this.backend.readBlob(filepath, 'info')
-      if (infoTxt) ie = JSON.parse(infoTxt)
-      if (!ie) {
-        const index = await this.indexManager.getIndex()
-        ie = index.entries[filepath]
-      }
-      if (remoteContent !== null && ie && ie.remoteSha) {
-        await this.backend.writeBlob(filepath, remoteContent, 'base')
-        ie.baseSha = ie.remoteSha
-        delete ie.remoteSha
-        ie.state = 'base'
-        ie.updatedAt = Date.now()
-        await this.backend.writeBlob(filepath, JSON.stringify(ie), 'info')
-      } else if (ie && ie.remoteSha) {
+      const ie: any = await this._loadIndexEntry(filepath)
+
+      if (ie && ie.remoteSha) {
+        if (remoteContent !== null) {
+          await this.backend.writeBlob(filepath, remoteContent, 'base')
+        }
         ie.baseSha = ie.remoteSha
         delete ie.remoteSha
         ie.state = 'base'
@@ -64,11 +55,36 @@ export class ConflictManager {
       }
 
       await this.indexManager.saveIndex()
+      // Ensure index head reflects resolved remote state when possible
+      try {
+        if (ie && ie.baseSha) {
+          this.indexManager.setHead(ie.baseSha)
+          await this.indexManager.saveIndex()
+        }
+      } catch (error) {
+        // best-effort: ignore errors when updating head
+      }
       await this.indexManager.loadIndex()
       return true
     } catch (error) {
       return false
     }
+  }
+
+  /**
+   * Load index entry from info blob or index entries.
+   * @param {string} filepath
+   * @returns {Promise<any>} index entry or undefined
+   */
+  private async _loadIndexEntry(filepath: string): Promise<any> {
+    let ie: any = undefined
+    const infoTxt = await this.backend.readBlob(filepath, 'info')
+    if (infoTxt) ie = JSON.parse(infoTxt)
+    if (!ie) {
+      const index = await this.indexManager.getIndex()
+      ie = index.entries[filepath]
+    }
+    return ie
   }
 
   /**
