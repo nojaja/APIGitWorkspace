@@ -22,10 +22,10 @@ export class RemoteSynchronizer {
    * @param {LocalChangeApplier} applier - ローカル適用器
    */
   constructor(
-    private backend: StorageBackend,
-    private indexManager: IndexManager,
-    private conflictManager: ConflictManager,
-    private applier: LocalChangeApplier
+    private _backend: StorageBackend,
+    private _indexManager: IndexManager,
+    private _conflictManager: ConflictManager,
+    private _applier: LocalChangeApplier
   ) {}
 
   /**
@@ -51,14 +51,14 @@ export class RemoteSynchronizer {
     await this._processRemoteDeletions(normalized.shas, conflicts)
 
     if (conflicts.length === 0) {
-      this.indexManager.setHead(normalized.headSha)
-      await this.indexManager.saveIndex()
+      this._indexManager.setHead(normalized.headSha)
+        await this._indexManager.saveIndex()
       return { conflicts, fetchedPaths: pathsToFetch, reconciledPaths }
     }
 
-    await this.conflictManager.promoteResolvedConflicts(conflicts, fetched, normalized.headSha)
+    await this._conflictManager.promoteResolvedConflicts(conflicts, fetched, normalized.headSha)
 
-    if (reconciledPaths.length > 0) await this.indexManager.saveIndex()
+    if (reconciledPaths.length > 0) await this._indexManager.saveIndex()
 
     return { conflicts, fetchedPaths: pathsToFetch, reconciledPaths }
   }
@@ -69,11 +69,11 @@ export class RemoteSynchronizer {
    * @param {any=} adapter - オプションのアダプタ
    * @returns {Promise<object>} commitSha を含むオブジェクト
    */
-  async push(input: any, adapter?: any): Promise<object> {
+  async push(input: any, _adapter?: any): Promise<object> {
     if (input.parentSha === undefined || input.parentSha === null) {
       throw new Error('No parentSha set. pull required')
     }
-    const currentIndex = await this.indexManager.getIndex()
+    const currentIndex = await this._indexManager.getIndex()
     if (input.parentSha !== currentIndex.head) {
       throw new Error('非互換な更新 (non-fast-forward): pull が必要です')
     }
@@ -86,9 +86,9 @@ export class RemoteSynchronizer {
     for (const ch of input.changes as any[]) {
       await this._applyChangeLocally(ch)
     }
-    this.indexManager.setHead(commitSha)
-    this.indexManager.setLastCommitKey(input.commitKey)
-    await this.indexManager.saveIndex()
+    this._indexManager.setHead(commitSha)
+    this._indexManager.setLastCommitKey(input.commitKey)
+    await this._indexManager.saveIndex()
 
     return { commitSha }
   }
@@ -109,8 +109,8 @@ export class RemoteSynchronizer {
     await this._applyRemovals(toRemove)
     await this._applyAddsOrUpdates(toAddOrUpdate, snapshot, newShas)
 
-    this.indexManager.setHead(headSha)
-    await this.indexManager.saveIndex()
+    this._indexManager.setHead(headSha)
+    await this._indexManager.saveIndex()
   }
 
   /**
@@ -146,7 +146,7 @@ export class RemoteSynchronizer {
     for (const [p] of Object.entries(snapshot)) {
       const sha = newShas[p]
       let entry: any = undefined
-      const infoTxt = await this.backend.readBlob(p, 'info')
+      const infoTxt = await this._backend.readBlob(p, 'info')
       if (infoTxt) entry = JSON.parse(infoTxt)
       if (!entry || entry.baseSha !== sha) out.push(p)
     }
@@ -159,7 +159,7 @@ export class RemoteSynchronizer {
    */
   private async _computeToRemove(snapshot: Record<string, string>): Promise<string[]> {
     const out: string[] = []
-    const infos = await this.backend.listFiles(undefined, 'info')
+    const infos = await this._backend.listFiles(undefined, 'info')
     for (const it of infos) {
       const p = it.path
       if (!(p in snapshot)) out.push(p)
@@ -174,12 +174,12 @@ export class RemoteSynchronizer {
    */
   private async _applyRemovals(toRemove: string[]): Promise<void> {
     for (const p of toRemove) {
-      await this.backend.deleteBlob(p)
+      await this._backend.deleteBlob(p)
       let ie: any = undefined
-      const infoTxt = await this.backend.readBlob(p, 'info')
+      const infoTxt = await this._backend.readBlob(p, 'info')
       if (infoTxt) ie = JSON.parse(infoTxt)
       if (ie && ie.state === 'base') {
-        await this.backend.deleteBlob(p, 'info')
+        await this._backend.deleteBlob(p, 'info')
       }
     }
   }
@@ -192,17 +192,17 @@ export class RemoteSynchronizer {
     for (const p of toAddOrUpdate) {
       const content = snapshot[p]
       const sha = newShas[p]
-      await this.backend.writeBlob(p, content, 'base')
+      await this._backend.writeBlob(p, content, 'base')
       let existing: any = undefined
-      const infoTxt = await this.backend.readBlob(p, 'info')
+      const infoTxt = await this._backend.readBlob(p, 'info')
       if (infoTxt) existing = JSON.parse(infoTxt)
       if (!existing) {
         const entry = { path: p, state: 'base', baseSha: sha, updatedAt: Date.now() }
-        await this.backend.writeBlob(p, JSON.stringify(entry), 'info')
+        await this._backend.writeBlob(p, JSON.stringify(entry), 'info')
       } else if (existing.state === 'base') {
         existing.baseSha = sha
         existing.updatedAt = Date.now()
-        await this.backend.writeBlob(p, JSON.stringify(existing), 'info')
+        await this._backend.writeBlob(p, JSON.stringify(existing), 'info')
       }
     }
   }
@@ -222,7 +222,7 @@ export class RemoteSynchronizer {
    * @returns {Promise<void>}
    */
   private async _processRemoteDeletions(remoteShas: Record<string, string>, conflicts: Array<any>): Promise<void> {
-    const infos = await this.backend.listFiles(undefined, 'info')
+    const infos = await this._backend.listFiles(undefined, 'info')
     for (const it of infos) {
       const p = it.path
       if (!(p in remoteShas)) {
@@ -241,19 +241,19 @@ export class RemoteSynchronizer {
    */
   private async _classifyRemotePathForPull(p: string, sha: string, normalized: RemoteSnapshotDescriptor, pathsToFetch: string[], reconciledPaths: string[]): Promise<boolean> {
     let entry: any = undefined
-    const infoTxt = await this.backend.readBlob(p, 'info')
+    const infoTxt = await this._backend.readBlob(p, 'info')
     if (infoTxt) entry = JSON.parse(infoTxt)
     if (!entry) return false
     if (entry.baseSha === sha) return true
 
-    const baseContent = await this.backend.readBlob(p, 'base')
+    const baseContent = await this._backend.readBlob(p, 'base')
     if (baseContent !== null) {
       const gitSha = await shaOfGitBlob(baseContent)
       if (gitSha === sha) {
         entry.baseSha = sha
         entry.state = entry.state || 'base'
         entry.updatedAt = Date.now()
-        await this.backend.writeBlob(p, JSON.stringify(entry), 'info')
+        await this._backend.writeBlob(p, JSON.stringify(entry), 'info')
         reconciledPaths.push(p)
         return true
       }
@@ -267,16 +267,16 @@ export class RemoteSynchronizer {
    */
   private async _handleRemotePath(p: string, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<any>, remoteHeadSha: string): Promise<void> {
     let indexEntry: any = undefined
-    const infoTxt = await this.backend.readBlob(p, 'info')
+    const infoTxt = await this._backend.readBlob(p, 'info')
     if (infoTxt) indexEntry = JSON.parse(infoTxt)
     let localWorkspace: { sha: string; content: string } | undefined = undefined
-    const wsBlob = await this.backend.readBlob(p, 'workspace')
+    const wsBlob = await this._backend.readBlob(p, 'workspace')
     if (wsBlob !== null) {
       const wsSha = indexEntry?.workspaceSha || await shaOf(wsBlob)
       localWorkspace = { sha: wsSha, content: wsBlob }
     }
     let localBase: { sha: string; content: string } | undefined = undefined
-    const baseBlob = await this.backend.readBlob(p, 'base')
+    const baseBlob = await this._backend.readBlob(p, 'base')
     if (baseBlob !== null && indexEntry?.baseSha) {
       localBase = { sha: indexEntry.baseSha, content: baseBlob }
     }
@@ -303,13 +303,13 @@ export class RemoteSynchronizer {
    * @returns {Promise<void>}
    */
   private async _handleRemoteNewConflict(p: string, content: string | undefined, remoteHeadSha: string, conflicts: Array<any>, workspaceSha: string | undefined, baseSha: string | undefined): Promise<void> {
-    await this.conflictManager.persistRemoteContentAsConflict(p, content)
+    await this._conflictManager.persistRemoteContentAsConflict(p, content)
     let ie: any = undefined
-    const infoTxt = await this.backend.readBlob(p, 'info')
+    const infoTxt = await this._backend.readBlob(p, 'info')
     if (infoTxt) ie = JSON.parse(infoTxt)
     if (!ie) ie = { path: p }
-    await this.conflictManager.setIndexEntryToConflict(p, ie, remoteHeadSha)
-    await this.indexManager.saveIndex()
+      await this._conflictManager.setIndexEntryToConflict(p, ie, remoteHeadSha)
+      await this._indexManager.saveIndex()
     conflicts.push({ path: p, remoteSha: remoteHeadSha, workspaceSha, baseSha })
   }
 
@@ -321,17 +321,17 @@ export class RemoteSynchronizer {
     const content = baseSnapshot[p]
     if (typeof content === 'undefined') {
       let ie: any = undefined
-      const infoTxt = await this.backend.readBlob(p, 'info')
+      const infoTxt = await this._backend.readBlob(p, 'info')
       if (infoTxt) ie = JSON.parse(infoTxt)
       if (!ie) ie = { path: p }
-      await this.conflictManager.setIndexEntryToConflict(p, ie, remoteHeadSha)
+      await this._conflictManager.setIndexEntryToConflict(p, ie, remoteHeadSha)
       conflicts.push({ path: p, remoteSha: remoteHeadSha, workspaceSha, baseSha })
-      await this.indexManager.saveIndex()
+        await this._indexManager.saveIndex()
       return
     }
     const entry = { path: p, state: 'base', baseSha: perFileRemoteSha, updatedAt: Date.now() }
-    await this.backend.writeBlob(p, JSON.stringify(entry), 'info')
-    await this.backend.writeBlob(p, content, 'base')
+    await this._backend.writeBlob(p, JSON.stringify(entry), 'info')
+    await this._backend.writeBlob(p, content, 'base')
   }
 
   /**
@@ -359,16 +359,16 @@ export class RemoteSynchronizer {
       indexEntry.state = 'conflict'
       indexEntry.remoteSha = remoteHeadSha
       indexEntry.updatedAt = Date.now()
-      await this.backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
-      await this.indexManager.saveIndex()
+      await this._backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
+      await this._indexManager.saveIndex()
       conflicts.push({ path: p, baseSha, remoteSha: remoteHeadSha, workspaceSha: undefined })
       return
     }
     indexEntry.baseSha = perFileRemoteSha
     indexEntry.state = 'base'
     indexEntry.updatedAt = Date.now()
-    await this.backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
-    await this.backend.writeBlob(p, content, 'base')
+    await this._backend.writeBlob(p, JSON.stringify(indexEntry), 'info')
+    await this._backend.writeBlob(p, content, 'base')
   }
 
   /**
@@ -377,9 +377,9 @@ export class RemoteSynchronizer {
    */
   private async _handleRemoteExistingConflict(p: string, indexEntry: any, perFileRemoteSha: string, baseSnapshot: Record<string, string>, conflicts: Array<any>, localWorkspace: { sha: string; content: string }, remoteHeadSha: string): Promise<void> {
     const baseSha = indexEntry.baseSha
-    await this.conflictManager.persistRemoteContentAsConflict(p, baseSnapshot[p])
-    this.conflictManager.setIndexEntryToConflict(p, indexEntry, remoteHeadSha)
-    await this.indexManager.saveIndex()
+    await this._conflictManager.persistRemoteContentAsConflict(p, baseSnapshot[p])
+    this._conflictManager.setIndexEntryToConflict(p, indexEntry, remoteHeadSha)
+    await this._indexManager.saveIndex()
     conflicts.push({ path: p, baseSha, remoteSha: remoteHeadSha, workspaceSha: localWorkspace?.sha })
   }
 
@@ -389,7 +389,7 @@ export class RemoteSynchronizer {
    */
   private async _handleRemoteDeletion(p: string, indexEntry: any, _remoteShas: Record<string, string>, conflicts: Array<any>): Promise<void> {
     let localWorkspace: { sha: string; content: string } | undefined = undefined
-    const wsBlob = await this.backend.readBlob(p, 'workspace')
+    const wsBlob = await this._backend.readBlob(p, 'workspace')
     if (wsBlob !== null) {
       const wsSha = indexEntry?.workspaceSha || await shaOf(wsBlob)
       localWorkspace = { sha: wsSha, content: wsBlob }
@@ -399,8 +399,8 @@ export class RemoteSynchronizer {
     }
 
     if (!localWorkspace || localWorkspace.sha === indexEntry.baseSha) {
-      await this.backend.deleteBlob(p, 'info')
-      await this.backend.deleteBlob(p)
+      await this._backend.deleteBlob(p, 'info')
+      await this._backend.deleteBlob(p)
     } else {
       conflicts.push({ path: p, baseSha: indexEntry.baseSha, workspaceSha: localWorkspace?.sha })
     }
@@ -414,17 +414,17 @@ export class RemoteSynchronizer {
     if (ch.type === 'create' || ch.type === 'update') {
       const sha = await shaOf(ch.content)
       let entry: any = undefined
-      const infoTxt = await this.backend.readBlob(ch.path, 'info')
+      const infoTxt = await this._backend.readBlob(ch.path, 'info')
       if (infoTxt) entry = JSON.parse(infoTxt)
       if (!entry) entry = { path: ch.path }
       entry.baseSha = sha
       entry.state = 'base'
       entry.updatedAt = Date.now()
       entry.workspaceSha = undefined
-      await this.backend.writeBlob(ch.path, JSON.stringify(entry), 'info')
-      await this.applier.applyCreateOrUpdate(ch)
+      await this._backend.writeBlob(ch.path, JSON.stringify(entry), 'info')
+      await this._applier.applyCreateOrUpdate(ch)
     } else if (ch.type === 'delete') {
-      await this.applier.applyDelete(ch)
+      await this._applier.applyDelete(ch)
     }
   }
 }
