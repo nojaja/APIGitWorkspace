@@ -23,7 +23,7 @@ module.exports = {
   // coverage threshold to enforce 80% global minimum
   coverageThreshold: {
     global: {
-      branches: 77,
+      branches: 80,
       functions: 80,
       lines: 80,
       statements: 80
