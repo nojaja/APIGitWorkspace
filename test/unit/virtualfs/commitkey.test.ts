@@ -35,7 +35,8 @@ describe('commitKey injection and index metadata', () => {
       updateRef: async () => {}
     }
 
-    const res = await vfs.push({ parentSha: parent, message: 'm', changes }, adapter as any)
+    await vfs.setAdapter(adapter as any, { type: 'github' })
+    const res = await vfs.push({ parentSha: parent, message: 'm', changes })
     expect(res.commitSha).toBe('commit-gh')
     // compute expected commitKey
     const expectedKey = crypto.createHash('sha1').update(parent + JSON.stringify(changes)).digest('hex')
@@ -59,7 +60,8 @@ describe('commitKey injection and index metadata', () => {
       updateRef: async () => {}
     }
 
-    const res = await vfs.push({ parentSha: parent, message: 'ml', changes, ref: 'main' }, adapter as any)
+    await vfs.setAdapter(adapter as any, { type: 'gitlab' })
+    const res = await vfs.push({ parentSha: parent, message: 'ml', changes, ref: 'main' })
     expect(res.commitSha).toBe('commit-gl')
     const expectedKey = crypto.createHash('sha1').update(parent + JSON.stringify(changes)).digest('hex')
     expect(capturedMessage).toContain('apigit-commit-key:' + expectedKey)

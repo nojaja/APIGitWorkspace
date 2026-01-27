@@ -153,7 +153,8 @@ describe('VirtualFS advanced workflows', () => {
       message: 'msg',
       commitKey: 'ck'
     }
-    const result = await vfs.push(input, mockAdapter)
+    await vfs.setAdapter(mockAdapter, { type: 'github' })
+    const result = await vfs.push(input)
     expect(mockAdapter.createBlobs).toHaveBeenCalledTimes(1)
     expect(mockAdapter.createTree).toHaveBeenCalledTimes(1)
     expect(mockAdapter.createCommit).toHaveBeenCalledTimes(1)

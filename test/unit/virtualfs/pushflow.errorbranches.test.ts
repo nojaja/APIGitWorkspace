@@ -33,7 +33,8 @@ describe('VirtualFS push error branches', () => {
       message: 'msg',
     }
 
-    await expect(vfs.push(input, adapter as any)).rejects.toThrow('非互換な更新')
+    await vfs.setAdapter(adapter as any, { type: 'gitlab' })
+    await expect(vfs.push(input)).rejects.toThrow('非互換な更新')
   })
 
   it('continues locally when updateRef throws non-422 error', async () => {
@@ -57,7 +58,8 @@ describe('VirtualFS push error branches', () => {
       message: 'msg',
     }
 
-    const res = await vfs.push(input, adapter as any)
+    await vfs.setAdapter(adapter as any, { type: 'gitlab' })
+    const res = await vfs.push(input)
     expect(res.commitSha).toBe('commit-sha-ok')
     // index should be updated even when updateRef warned
     expect((await vfs.getIndex()).head).toBe('commit-sha-ok')

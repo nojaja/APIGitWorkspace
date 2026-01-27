@@ -43,7 +43,8 @@ describe('VirtualFS push flows', () => {
       updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
     }
 
-    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm', changes }, adapter as any)
+    await vfs.setAdapter(adapter as any, { type: 'github' })
+    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm', changes })
     expect(res.commitSha).toBe('commit-github')
     expect((await vfs.getIndex()).head).toBe('commit-github')
 
@@ -70,7 +71,8 @@ describe('VirtualFS push flows', () => {
       updateRef: async (_ref: string, _sha: string) => { throw new Error('no update') }
     }
 
-    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm2', changes, ref: 'main' }, adapter as any)
+    await vfs.setAdapter(adapter as any, { type: 'gitlab' })
+    const res = await vfs.push({ parentSha: (await vfs.getIndex()).head, message: 'm2', changes, ref: 'main' })
     expect(res.commitSha).toBe('commit-actions')
     expect((await vfs.getIndex()).head).toBe('commit-actions')
 

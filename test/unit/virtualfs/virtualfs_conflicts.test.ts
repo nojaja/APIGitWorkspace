@@ -293,7 +293,8 @@ describe('VirtualFS conflict and edge cases', () => {
       commitKey: 'k'
     }
 
-    await vfs.push(input, mockAdapter)
+    await vfs.setAdapter(mockAdapter, { type: 'github' })
+    await vfs.push(input)
 
     // Verify call sequence
     expect(mockAdapter.createBlobs).toHaveBeenCalled()

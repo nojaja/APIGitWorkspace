@@ -29,7 +29,8 @@ describe('VirtualFS critical branches - push/pull error handling', () => {
       commitKey: 'k1',
     }
 
-    await expect(vfs.push(input, adapter)).rejects.toThrow('tree creation failed')
+    await vfs.setAdapter(adapter, { type: 'github' })
+    await expect(vfs.push(input)).rejects.toThrow('tree creation failed')
   })
 
   it('push with createCommit error should throw', async () => {
@@ -52,7 +53,8 @@ describe('VirtualFS critical branches - push/pull error handling', () => {
       commitKey: 'k1',
     }
 
-    await expect(vfs.push(input, adapter)).rejects.toThrow('commit failed')
+    await vfs.setAdapter(adapter, { type: 'github' })
+    await expect(vfs.push(input)).rejects.toThrow('commit failed')
   })
 
   it('pull with conflict when remote adds new file and workspace unchanged', async () => {
@@ -124,7 +126,8 @@ describe('VirtualFS critical branches - push/pull error handling', () => {
     }
 
     // Should throw when blob sha missing
-    await expect(vfs.push(input, adapter)).rejects.toThrow()
+    await vfs.setAdapter(adapter, { type: 'github' })
+    await expect(vfs.push(input)).rejects.toThrow()
   })
 
   it('pull with partial content fetch results in conflict', async () => {

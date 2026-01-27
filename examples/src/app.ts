@@ -69,14 +69,26 @@ function renderUI() {
 
       <section style="margin-top:18px">
         <h2>結果</h2>
-        <pre id="output" style="background:#f7f7f8;padding:12px;border-radius:6px;min-height:120px;white-space:pre-wrap"></pre>
+        <div style="display:flex;gap:12px;align-items:stretch;height:50vh;box-sizing:border-box;">
+          <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
+            <pre id="output" style="background:#f7f7f8;padding:12px;border-radius:6px;height:100%;min-height:0;white-space:pre-wrap;overflow:auto;"></pre>
+          </div>
+          <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
+            <pre id="trace" style="background:#f7f7f8;padding:12px;border-radius:6px;height:100%;min-height:0;white-space:pre-wrap;overflow:auto;"></pre>
+          </div>
+        </div>
       </section>
+      
     </div>
   `
 }
 
 function appendOutput(text: string) {
   const out = el('output') as HTMLPreElement
+  out.textContent = out.textContent + text + '\n'
+}
+function appendTrace(text: string) {
+  const out = el('trace') as HTMLPreElement
   out.textContent = out.textContent + text + '\n'
 }
 
@@ -231,6 +243,8 @@ async function main() {
               try {
                 await currentVfs.setAdapter(null, { type: 'github', opts: ghOpts })
                 appendOutput('GitHub 接続情報を VirtualFS に登録しました')
+                
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'github', opts: ${JSON.stringify(ghOpts)} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -258,6 +272,7 @@ async function main() {
               try {
                 await currentVfs.setAdapter(null, { type: 'gitlab', opts: glOpts })
                 appendOutput('GitLab 接続情報を VirtualFS に登録しました')
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'gitlab', opts: ${JSON.stringify(glOpts)} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -273,6 +288,7 @@ async function main() {
       }
     } catch (e) {
       appendOutput('[connectBtn]接続処理で例外: ' + String(e))
+      appendTrace(`${JSON.stringify(e)}`)
     }
   })
 
@@ -290,7 +306,9 @@ async function main() {
         }
         const rootNameInput = (prompt('OPFS のルート名を入力してください（空欄でデフォルト）') || '').trim()
         const backend = rootNameInput ? new lib.OpfsStorage(rootNameInput) : new lib.OpfsStorage()
+        appendTrace(`const backend = new lib.OpfsStorage(${JSON.stringify(rootNameInput)})`)
         const vfs = new lib.VirtualFS({ backend })
+        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
         if (currentVfs) {
           appendOutput('[connectOpfsBtn]既存の VirtualFS を新しいものに切り替えます')
           try {
@@ -330,7 +348,9 @@ async function main() {
         }
         const dbNameInput = (prompt('IndexedDB の DB 名を入力してください（空欄でデフォルト）') || '').trim()
         const backend = dbNameInput ? new lib.IndexedDatabaseStorage(dbNameInput) : new lib.IndexedDatabaseStorage()
+        appendTrace(`const backend = new lib.IndexedDatabaseStorage(${JSON.stringify(dbNameInput)})`)
         const vfs = new lib.VirtualFS({ backend })
+        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
         if (currentVfs) {
           appendOutput('[connectIndexedDbBtn]既存の VirtualFS を新しいものに切り替えます')
           try {
@@ -372,7 +392,9 @@ async function main() {
         }
         const rootNameInput = (prompt('InMemory のルート名を入力してください（空欄でデフォルト）') || '').trim()
         const backend = rootNameInput ? new lib.InMemoryStorage(rootNameInput) : new lib.InMemoryStorage()
+        appendTrace(`const backend = new lib.InMemoryStorage(${JSON.stringify(rootNameInput)})`)
         const vfs = new lib.VirtualFS({ backend })
+        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
         if (currentVfs) {
           appendOutput('[connectInMemoryBtn]既存の VirtualFS を新しいものに切り替えます')
           try {
@@ -400,7 +422,6 @@ async function main() {
 
   const opfsRootsBtn = el('opfsRoots') as HTMLButtonElement
   opfsRootsBtn.addEventListener('click', async () => {
-    appendOutput('[opfsRoots]availableRoots を取得します...')
     try {
       const OpfsCtor: any = lib.OpfsStorage
       if (!OpfsCtor) {
@@ -410,6 +431,7 @@ async function main() {
       }
       if (OpfsCtor && typeof OpfsCtor.availableRoots === 'function') {
         let roots: any = OpfsCtor.availableRoots()
+        appendTrace('let opfsRoots = lib.OpfsStorage.availableRoots()')
         if (roots && typeof roots.then === 'function') {
           try {
             roots = await roots
@@ -417,16 +439,11 @@ async function main() {
             roots = []
           }
         }
-        if (Array.isArray(roots) && roots.length) {
-          appendOutput('[opfsRoots]availableRoots: ' + JSON.stringify(roots))
-          setListContents('opfsRootsList', roots)
-          return
-        }
-        appendOutput('[opfsRoots]availableRoots: []')
+        appendTrace('JSON.stringify(opfsRoots) => ' + JSON.stringify(roots))
+        
+        appendOutput('[opfsRoots]availableRoots: ' + JSON.stringify(roots))
+        setListContents('opfsRootsList', Array.isArray(roots) ? roots : [])
       }
-
-      appendOutput('[opfsRoots]availableRoots: []')
-      setListContents('opfsRootsList', [])
     } catch (e) {
       appendOutput('[opfsRoots]取得失敗: ' + String(e))
       setListContents('opfsRootsList', [])
@@ -435,11 +452,10 @@ async function main() {
 
   const indexedDbRootsBtn = el('indexedDbRoots') as HTMLButtonElement
   indexedDbRootsBtn.addEventListener('click', async () => {
-    appendOutput('[indexedDbRoots]availableRoots を取得します...')
     try {
       const IdxCtor: any = lib.IndexedDatabaseStorage
       if (!IdxCtor) {
-        appendOutput('[indexedDbRoots]バンドルに IndexedDbStorage が含まれていません')
+        appendOutput('[indexedDbRoots]バンドルに IndexedDatabaseStorage が含まれていません')
         setListContents('indexedDbRootsList', [])
         return
       }
@@ -448,6 +464,7 @@ async function main() {
       
       if (IdxCtor && typeof IdxCtor.availableRoots === 'function') {
         let roots: any = IdxCtor.availableRoots()
+        appendTrace('let indexedDbRoots = lib.IndexedDatabaseStorage.availableRoots()')
         if (roots && typeof roots.then === 'function') {
           try {
             roots = await roots
@@ -455,10 +472,11 @@ async function main() {
             roots = []
           }
         }
+        appendTrace('JSON.stringify(indexedDbRoots) => ' + JSON.stringify(roots))
         appendOutput('[indexedDbRoots]availableRoots: ' + JSON.stringify(roots))
         setListContents('indexedDbRootsList', Array.isArray(roots) ? roots : [])
       } else {
-        appendOutput('[indexedDbRoots]IndexedDbStorage に availableRoots() が実装されていません')
+        appendOutput('[indexedDbRoots]IndexedDatabaseStorage に availableRoots() が実装されていません')
         setListContents('indexedDbRootsList', [])
       }
     } catch (e) {
@@ -475,7 +493,9 @@ async function main() {
       let roots: any[] = []
       if (MemCtor && typeof MemCtor.availableRoots === 'function') {
         roots = MemCtor.availableRoots() || []
+        appendTrace('let inMemoryRoots = lib.InMemoryStorage.availableRoots()')
       }
+      appendTrace('JSON.stringify(inMemoryRoots) => ' + JSON.stringify(roots))
       appendOutput('[inMemoryRoots]availableRoots: ' + JSON.stringify(roots))
       setListContents('inMemoryRootsList', Array.isArray(roots) ? roots : [])
     } catch (e) {
@@ -539,12 +559,15 @@ async function main() {
     try {
       if (!BackendCtor || !lib.VirtualFS) { appendOutput(`[${prefix}]${displayName}/VirtualFS が見つかりません`); return }
       const backend = new BackendCtor(val)
+      appendTrace(`const backend = new lib.${displayName}(${JSON.stringify(val)})`)
       const vfs = new (lib.VirtualFS as any)({ backend })
+      appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
       if (currentVfs) appendOutput(`[${prefix}]既存の VirtualFS を新しいものに切り替えます`)
       currentVfs = vfs
       appendOutput(`[${prefix}]VirtualFS を作成し ${displayName} を接続しました (${suffixLabel}=${val})`)
       try {
         await vfs.init()
+        appendTrace(`await vfs.init()`)
         appendOutput(`[${prefix}]VirtualFS.init() 実行済み (${displayName})`)
         await populateAdapterMetadata(vfs)
       } catch (e) { appendOutput(`[${prefix}]VirtualFS.init() で例外: ${String(e)}`) }
@@ -707,9 +730,9 @@ async function main() {
     appendOutput('[fetchRemoteBtn]リモートスナップショットを取得します...')
     if (!currentVfs) { appendOutput('[fetchRemoteBtn]先に VirtualFS を初期化してください'); return }
     try {
-      const adapter = await getCurrentAdapter()
-      if (!adapter) { appendOutput('[fetchRemoteBtn]先に接続してください'); return }
+      appendTrace('const res = await currentVfs.pull()')
       const res = await currentVfs.pull()
+      appendTrace('res => ' + JSON.stringify(res))
       const remote = (res as any).remote
       const remotePaths = (res as any).remotePaths || Object.keys(remote?.shas || {})
       appendOutput(`[fetchRemoteBtn]リモートファイル数: ${remotePaths.length}`)
@@ -874,8 +897,6 @@ async function main() {
       await currentVfs.writeFile(path, newContent)
       appendOutput(`[editAndPushBtn]ローカル編集しました: ${path}`)
 
-      const changes = await currentVfs.getChangeSet()
-      appendOutput('[editAndPushBtn]ローカル変更一覧 (編集後):\n' + JSON.stringify(changes, null, 2))
     } catch (e) {
       appendOutput('[editAndPushBtn]editAndPush 失敗: ' + String(e))
     }
@@ -892,10 +913,8 @@ async function main() {
       const ok = confirm(`本当に削除しますか: ${path}`)
       if (!ok) return
       await currentVfs.deleteFile(path)
-      appendOutput(`[deleteAndPushBtn]ローカルで削除しました（トゥームストーンまたはインデックスから除去）: ${path}`)
+      appendOutput(`[deleteAndPushBtn]ローカルで削除しました: ${path}`)
 
-      const changes = await currentVfs.getChangeSet()
-      appendOutput('[deleteAndPushBtn]ローカル変更一覧 (削除後):\n' + JSON.stringify(changes, null, 2))
     } catch (e) {
       appendOutput('[deleteAndPushBtn]deleteAndPush 失敗: ' + String(e))
     }
@@ -903,7 +922,7 @@ async function main() {
 
   const renameAndPushBtn = el('renameAndPush') as HTMLButtonElement
   renameAndPushBtn.addEventListener('click', async () => {
-    appendOutput('[renameAndPushBtn]既存ファイルの名前変更 & push を開始します...')
+    appendOutput('[renameAndPushBtn]既存ファイルの名前変更を開始します...')
     if (!currentVfs) { appendOutput('[renameAndPushBtn]先に VirtualFS を初期化してください'); return }
     if (!(await getCurrentAdapter())) { appendOutput('[renameAndPushBtn]先にアダプタを接続してください'); return }
     try {
@@ -914,8 +933,6 @@ async function main() {
       await currentVfs.renameFile(from, to)
       appendOutput(`[renameAndPushBtn]ローカルでリネームしました: ${from} -> ${to}`)
 
-      const changes = await currentVfs.getChangeSet()
-      appendOutput('[renameAndPushBtn]ローカル変更一覧 (リネーム後):\n' + JSON.stringify(changes, null, 2))
     } catch (e) {
       appendOutput('[renameAndPushBtn]renameAndPush 失敗: ' + String(e))
     }
@@ -926,12 +943,14 @@ async function main() {
     ; (async () => {
       try {
         if (!currentVfs) {
-          appendOutput('[showSnapshotBtn]スナップショットがロードされていません（先に接続して repository を読み込んでください）')
+          appendOutput('[showSnapshotBtn]先に VirtualFS を初期化してください')
           return
         }
         appendOutput('[showSnapshotBtn]スナップショット内のパス一覧を取得しています...')
         try {
           const paths: string[] = currentVfs.listPaths ? await currentVfs.listPaths() : []
+          appendTrace('const paths = await currentVfs.listPaths()')
+          appendTrace('paths => ' + JSON.stringify(paths))
           if (!paths || paths.length === 0) {
             appendOutput('[showSnapshotBtn]スナップショットにファイルは存在しません')
             return
