@@ -244,7 +244,7 @@ async function main() {
                 await currentVfs.setAdapter(null, { type: 'github', opts: ghOpts })
                 appendOutput('GitHub 接続情報を VirtualFS に登録しました')
                 
-                appendTrace(`await currentVfs.setAdapter(null, { type: 'github', opts: ${JSON.stringify(ghOpts)} })`)
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'github', opts: ${JSON.stringify({ owner:ghOpts.owner, repo: ghOpts.repo, token:'******' })} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -272,7 +272,7 @@ async function main() {
               try {
                 await currentVfs.setAdapter(null, { type: 'gitlab', opts: glOpts })
                 appendOutput('GitLab 接続情報を VirtualFS に登録しました')
-                appendTrace(`await currentVfs.setAdapter(null, { type: 'gitlab', opts: ${JSON.stringify(glOpts)} })`)
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'gitlab', opts: ${JSON.stringify({ projectId:glOpts.projectId,host: glOpts.host, token:'******' })} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -322,7 +322,8 @@ async function main() {
         appendOutput('[connectOpfsBtn]VirtualFS を作成し OpfsStorage を接続しました' + (rootNameInput ? ` (root=${rootNameInput})` : ''))
         try {
           await vfs.init()
-          appendOutput('[connectOpfsBtn]VirtualFS.init() 実行済み (OpfsStorage)')
+        appendTrace(`await currentVfs.init()`)
+          appendOutput('[connectOpfsBtn]VirtualFS.init() 実行 (OpfsStorage)')
         } catch (e) {
           appendOutput('[connectOpfsBtn]VirtualFS.init()/IO で例外: ' + String(e))
         }
@@ -364,7 +365,8 @@ async function main() {
         appendOutput('[connectIndexedDbBtn]VirtualFS を作成し IndexedDatabaseStorage を接続しました' + (dbNameInput ? ` (db=${dbNameInput})` : ''))
         try {
           await vfs.init()
-          appendOutput('[connectIndexedDbBtn]VirtualFS.init() 実行済み (IndexedDatabaseStorage)')
+        appendTrace(`await currentVfs.init()`)
+          appendOutput('[connectIndexedDbBtn]VirtualFS.init() 実行 (IndexedDatabaseStorage)')
         } catch (e) {
           appendOutput('[connectIndexedDbBtn]VirtualFS.init()/IO で例外: ' + String(e))
         }
@@ -394,7 +396,7 @@ async function main() {
         const backend = rootNameInput ? new lib.InMemoryStorage(rootNameInput) : new lib.InMemoryStorage()
         appendTrace(`const backend = new lib.InMemoryStorage(${JSON.stringify(rootNameInput)})`)
         const vfs = new lib.VirtualFS({ backend })
-        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
+        appendTrace(`const currentVfs = new lib.VirtualFS({ backend })`)
         if (currentVfs) {
           appendOutput('[connectInMemoryBtn]既存の VirtualFS を新しいものに切り替えます')
           try {
@@ -408,7 +410,8 @@ async function main() {
         appendOutput('[connectInMemoryBtn]VirtualFS を作成し InMemoryStorage を接続しました' + (rootNameInput ? ` (root=${rootNameInput})` : ''))
         try {
           await vfs.init()
-          appendOutput('[connectInMemoryBtn]VirtualFS.init() 実行済み (InMemoryStorage)')
+        appendTrace(`await currentVfs.init()`)
+          appendOutput('[connectInMemoryBtn]VirtualFS.init() 実行 (InMemoryStorage)')
         } catch (e) {
           appendOutput('[connectInMemoryBtn]VirtualFS.init()/IO で例外: ' + String(e))
         }
@@ -561,14 +564,14 @@ async function main() {
       const backend = new BackendCtor(val)
       appendTrace(`const backend = new lib.${displayName}(${JSON.stringify(val)})`)
       const vfs = new (lib.VirtualFS as any)({ backend })
-      appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
+      appendTrace(`const currentVfs = new lib.VirtualFS({ backend })`)
       if (currentVfs) appendOutput(`[${prefix}]既存の VirtualFS を新しいものに切り替えます`)
       currentVfs = vfs
       appendOutput(`[${prefix}]VirtualFS を作成し ${displayName} を接続しました (${suffixLabel}=${val})`)
       try {
         await vfs.init()
-        appendTrace(`await vfs.init()`)
-        appendOutput(`[${prefix}]VirtualFS.init() 実行済み (${displayName})`)
+        appendTrace(`await currentVfs.init()`)
+        appendOutput(`[${prefix}]VirtualFS.init() 実行 (${displayName})`)
         await populateAdapterMetadata(vfs)
       } catch (e) { appendOutput(`[${prefix}]VirtualFS.init() で例外: ${String(e)}`) }
     } catch (e) { appendOutput(`[${prefix}]接続失敗: ${String(e)}`) }
@@ -817,7 +820,9 @@ async function main() {
     if (!currentVfs) { appendOutput('[resolveConflictBtn]先に VirtualFS を初期化してください'); return }
     try {
       if (typeof currentVfs.resolveConflict === 'function') {
+        appendTrace(`const ok = await currentVfs.resolveConflict(${path})`)
         const ok = await currentVfs.resolveConflict(path)
+        appendTrace(`ok => ` + JSON.stringify(ok))
         if (ok) appendOutput(`[resolveConflictBtn]競合を解消しました: ${path}`)
         else appendOutput(`[resolveConflictBtn]競合ファイルが見つからないか削除に失敗しました: ${path}`)
       } else {
@@ -837,7 +842,9 @@ async function main() {
         appendOutput('[remoteChangesBtn] VirtualFS に getRemoteDiffs() が存在しません');
         return
       }
+      appendTrace(`const res = await currentVfs.getRemoteDiffs()`) 
       const res = await currentVfs.getRemoteDiffs()
+      appendTrace(`res => ` + JSON.stringify(res))
       const diffs: string[] = res?.diffs || []
       appendOutput('[remoteChangesBtn]リモート差分ファイル数: ' + diffs.length)
       if (diffs.length > 0) appendOutput(diffs.join('\n'))
@@ -862,7 +869,9 @@ async function main() {
   localChangesBtn.addEventListener('click', async () => {
     if (!currentVfs) { appendOutput('[localChangesBtn]先に VirtualFS を初期化してください'); return }
     try {
+      appendTrace('const changes = await currentVfs.getChangeSet()')
       const changes = await currentVfs.getChangeSet()
+      appendTrace('changes => ' + JSON.stringify(changes))
       appendOutput('[localChangesBtn]ローカル変更一覧:\n' + JSON.stringify(changes, null, 2))
     } catch (e) { appendOutput('[localChangesBtn]localChanges 失敗: ' + String(e)) }
   })
@@ -873,11 +882,17 @@ async function main() {
     if (!currentVfs) { appendOutput('[pushLocalBtn]先に VirtualFS を初期化してください'); return }
     if (!(await getCurrentAdapter())) { appendOutput('[pushLocalBtn]先にアダプタを接続してください'); return }
     try {
+      appendTrace('const changes = await currentVfs.getChangeSet()')
       const changes = await currentVfs.getChangeSet()
+      appendTrace('changes => ' + JSON.stringify(changes))
       if (!changes || changes.length === 0) { appendOutput('[pushLocalBtn]Push する変更がありません'); return }
+      appendTrace('const idx = await currentVfs.getIndex()')
       const idx = await currentVfs.getIndex()
+      appendTrace('idx => ' + JSON.stringify(idx))
       const input = { parentSha: idx.head || '', message: 'Example push from UI', changes }
+      appendTrace(`const res = await currentVfs.push(${JSON.stringify(input)})`)
       const res = await currentVfs.push(input)
+      appendTrace('res => ' + JSON.stringify(res))
       appendOutput('[pushLocalBtn]push 成功: ' + JSON.stringify(res))
     } catch (e) { appendOutput('[pushLocalBtn]pushLocal 失敗: ' + String(e)) }
   })
@@ -891,9 +906,12 @@ async function main() {
     try {
       const path = (prompt('編集するファイルのパスを入力してください（例: examples/file.txt）') || '').trim()
       if (!path) return
+      appendTrace(`const existing = await currentVfs.readFile(${path})`)
       const existing = await currentVfs.readFile(path)
+      appendTrace('existing => ' + existing)
       const newContent = prompt('新しいファイル内容を入力してください', existing === null ? '' : String(existing))
       if (newContent === null) return
+      appendTrace(`await currentVfs.writeFile(${path}, ${newContent})`)
       await currentVfs.writeFile(path, newContent)
       appendOutput(`[editAndPushBtn]ローカル編集しました: ${path}`)
 
@@ -912,6 +930,7 @@ async function main() {
       if (!path) return
       const ok = confirm(`本当に削除しますか: ${path}`)
       if (!ok) return
+      appendTrace(`await currentVfs.deleteFile(${path})`) 
       await currentVfs.deleteFile(path)
       appendOutput(`[deleteAndPushBtn]ローカルで削除しました: ${path}`)
 
@@ -930,6 +949,7 @@ async function main() {
       if (!from) return
       const to = (prompt('新しいファイル名を入力してください（例: examples/new.txt）') || '').trim()
       if (!to) return
+      appendTrace(`await currentVfs.renameFile(${from}, ${to})`)
       await currentVfs.renameFile(from, to)
       appendOutput(`[renameAndPushBtn]ローカルでリネームしました: ${from} -> ${to}`)
 
