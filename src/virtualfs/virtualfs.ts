@@ -414,7 +414,7 @@ export class VirtualFS {
    * @returns {Promise<{commitSha:string}>}
    */
   private async _handlePushWithAdapter(input: any, adapter: any) {
-    const branch = (input as any).ref || 'main'
+    const branch = (input as any).ref || (this.adapterMeta && this.adapterMeta.opts && this.adapterMeta.opts.branch) || 'main'
     const messageWithKey = `${input.message}\n\napigit-commit-key:${input.commitKey}`
     // If adapter supports createCommitWithActions (GitLab style), use it directly
     if ((adapter as any).createCommitWithActions) {
@@ -579,7 +579,10 @@ export class VirtualFS {
   private async _fetchSnapshotFromAdapterInstance(): Promise<RemoteSnapshotDescriptor | null> {
     const adapterInstance = await this.getAdapterInstance()
     if (adapterInstance && typeof adapterInstance.fetchSnapshot === 'function') {
-      return await adapterInstance.fetchSnapshot()
+      // prefer branch configured in persisted adapter metadata, default to 'main'
+      const branch = (this.adapterMeta && this.adapterMeta.opts && this.adapterMeta.opts.branch) || 'main'
+      return await adapterInstance.fetchSnapshot(branch)
+
     }
     return null
   }

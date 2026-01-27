@@ -49,6 +49,7 @@ function renderUI() {
             <option value="gitlab">gitlab</option>
           </select>
         </label>
+        <label>Branch: <input id="branchInput" style="width:120px" placeholder="main"/></label>
         <button id="connectBtn">接続設定の更新</button>
       </div>
 
@@ -143,6 +144,7 @@ async function main() {
   const repoInput = el('repoInput') as HTMLInputElement
   const tokenInput = el('tokenInput') as HTMLInputElement
   const platformSelect = el('platformSelect') as HTMLSelectElement
+  const branchInput = el('branchInput') as HTMLInputElement
 
   // Note: URL GET param prefill and sync removed per UI simplification.
 
@@ -198,7 +200,7 @@ async function main() {
   }
 
   connectBtn.addEventListener('click', async () => {
-    appendOutput('[connectBtn]接続を試みます...')
+    appendOutput('[connectBtn]接続を設定します...')
     const repo = repoInput.value.trim()
     const token = tokenInput.value.trim()
     appendOutput(`[connectBtn]入力: repo=${repo || '<未入力>'} token=${token ? '***' : '<未入力>'}`)
@@ -261,13 +263,16 @@ async function main() {
             }
             const ghOpts: any = { owner, repo: repoName, token }
             if (hostForApi) ghOpts.host = hostForApi
+            // Read branch from UI input (empty -> 'main') and persist along with adapter metadata
+            const ghBranch = (branchInput && branchInput.value ? branchInput.value.trim() : '') || 'main'
+            ghOpts.branch = ghBranch
             // Do NOT instantiate adapter here; only persist connection metadata into VirtualFS
             if (currentVfs && typeof currentVfs.setAdapter === 'function') {
               try {
                 await currentVfs.setAdapter(null, { type: 'github', opts: ghOpts })
-                appendOutput('GitHub 接続情報を VirtualFS に登録しました')
-                
-                appendTrace(`await currentVfs.setAdapter(null, { type: 'github', opts: ${JSON.stringify({ owner:ghOpts.owner, repo: ghOpts.repo, token:'******' })} })`)
+                appendOutput(`GitHub 接続情報を VirtualFS に登録しました (branch=${ghBranch})`)
+
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'github', opts: ${JSON.stringify({ owner:ghOpts.owner, repo: ghOpts.repo, token:'******', branch: ghBranch })} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -290,12 +295,15 @@ async function main() {
             try {
             const glOpts: any = { projectId, token }
             if (!/gitlab\.com$/i.test(hostname)) glOpts.host = `${parsed.protocol}//${parsed.host}`
+            // Read branch from UI input (empty -> 'main') and persist along with adapter metadata
+            const glBranch = (branchInput && branchInput.value ? branchInput.value.trim() : '') || 'main'
+            glOpts.branch = glBranch
             // Do NOT instantiate adapter here; only persist connection metadata into VirtualFS
             if (currentVfs && typeof currentVfs.setAdapter === 'function') {
               try {
                 await currentVfs.setAdapter(null, { type: 'gitlab', opts: glOpts })
-                appendOutput('GitLab 接続情報を VirtualFS に登録しました')
-                appendTrace(`await currentVfs.setAdapter(null, { type: 'gitlab', opts: ${JSON.stringify({ projectId:glOpts.projectId,host: glOpts.host, token:'******' })} })`)
+                appendOutput(`GitLab 接続情報を VirtualFS に登録しました (branch=${glBranch})`)
+                appendTrace(`await currentVfs.setAdapter(null, { type: 'gitlab', opts: ${JSON.stringify({ projectId:glOpts.projectId, host: glOpts.host, token:'******', branch: glBranch })} })`)
               } catch (e) {
                 appendOutput('[connectBtn]VirtualFS に adapter 情報を設定できませんでした: ' + String(e))
               }
@@ -450,6 +458,7 @@ async function main() {
           repoInput.value = o.owner && o.repo ? `${base}/${o.owner}/${o.repo}` : ''
         } catch (_) { repoInput.value = '' }
         tokenInput.value = (o && o.token) || ''
+        try { branchInput.value = (o && o.branch) || 'main' } catch (_) { /* ignore */ }
         platformSelect.value = 'github'
         currentPlatform = 'github'
         currentOwner = o.owner || null
@@ -461,6 +470,7 @@ async function main() {
           repoInput.value = o.projectId ? `${base}/${o.projectId}` : ''
         } catch (_) { repoInput.value = '' }
         tokenInput.value = (o && o.token) || ''
+        try { branchInput.value = (o && o.branch) || 'main' } catch (_) { /* ignore */ }
         platformSelect.value = 'gitlab'
         currentPlatform = 'gitlab'
         try {
@@ -474,6 +484,7 @@ async function main() {
       } else {
         repoInput.value = ''
         tokenInput.value = ''
+        try { branchInput.value = 'main' } catch (_) { /* ignore */ }
         platformSelect.value = 'auto'
         currentPlatform = null
         currentOwner = null
@@ -482,6 +493,7 @@ async function main() {
     } catch (_e) {
       repoInput.value = ''
       tokenInput.value = ''
+      try { branchInput.value = 'main' } catch (_) { /* ignore */ }
       platformSelect.value = 'auto'
       currentPlatform = null
       currentOwner = null
