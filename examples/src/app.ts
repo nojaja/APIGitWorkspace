@@ -25,15 +25,15 @@ function renderUI() {
         <h2>Storage: availableRoots</h2>
         <div style="display:flex;gap:12px;align-items:flex-start;">
           <div style="flex:1">
-            <h3 style="margin:6px 0">OPFS</h3><button id="connectOpfs">opfsStorageを追加</button><button id="opfsRoots">opfs の availableRoots を更新</button><button id="deleteOpfs">OPFSを削除</button>
+            <h3 style="margin:6px 0">OPFS</h3><button id="connectOpfs">opfsStorageを追加</button><button id="opfsRoots">opfs の availableRoots を更新</button><button id="deleteOpfs">OPFSを削除</button><button id="closeOpfs">OPFSを閉じる</button>
             <select id="opfsRootsList" multiple size="6" style="background:#fff;border:1px solid #ddd;padding:6px;min-height:80px;margin:0;width:100%"></select>
           </div>
           <div style="flex:1">
-            <h3 style="margin:6px 0">IndexedDB</h3><button id="connectIndexedDb">IndexedDbStorageを追加</button><button id="indexedDbRoots">IndexedDb の availableRoots を更新</button><button id="deleteIndexedDb">IndexedDbを削除</button>
+            <h3 style="margin:6px 0">IndexedDB</h3><button id="connectIndexedDb">IndexedDbStorageを追加</button><button id="indexedDbRoots">IndexedDb の availableRoots を更新</button><button id="deleteIndexedDb">IndexedDbを削除</button><button id="closeIndexedDb">IndexedDbを閉じる</button>
             <select id="indexedDbRootsList" multiple size="6" style="background:#fff;border:1px solid #ddd;padding:6px;min-height:80px;margin:0;width:100%"></select>
           </div>
           <div style="flex:1">
-            <h3 style="margin:6px 0">InMemory</h3><button id="connectInMemory">InMemoryStorageを追加</button><button id="inMemoryRoots">InMemory の availableRoots を更新</button><button id="deleteInMemory">InMemoryを削除</button>
+            <h3 style="margin:6px 0">InMemory</h3><button id="connectInMemory">InMemoryStorageを追加</button><button id="inMemoryRoots">InMemory の availableRoots を更新</button><button id="deleteInMemory">InMemoryを削除</button><button id="closeInMemory">InMemoryを閉じる</button>
             <select id="inMemoryRootsList" multiple size="6" style="background:#fff;border:1px solid #ddd;padding:6px;min-height:80px;margin:0;width:100%"></select>
           </div>
         </div>
@@ -55,8 +55,7 @@ function renderUI() {
       <section style="margin-top:18px">
         <h2>操作</h2>
           <button id="showSnapshot">スナップショット（ローカル）一覧表示</button>
-          <button id="listAdapters">アダプタ情報を表示</button>
-          <button id="fetchRemote">リモート一覧をfetch</button>
+          <button id="fetchRemote">リモート一覧をpull</button>
           <button id="resolveConflict">競合を解消済にする</button>
           <button id="remoteChanges">リモートで新しいファイル一覧 (チェンジセット)</button>
           <button id="addLocalFile">ローカルにファイルを追加</button>
@@ -172,6 +171,30 @@ async function main() {
       return null
     }
     return null
+  }
+
+  // 共通: 現在の VirtualFS を安全に閉じる（close / dispose を呼び、currentVfs を null にする）
+  async function closeCurrentVfs(prefix: string) {
+    if (!currentVfs) {
+      appendOutput(`[${prefix}]VirtualFS は接続されていません`)
+      return
+    }
+    appendOutput(`[${prefix}]現在の VirtualFS を閉じます...`)
+    try {
+      if (typeof (currentVfs as any).close === 'function') {
+        await (currentVfs as any).close()
+        appendTrace(`await currentVfs.close()`)
+      } else if (typeof (currentVfs as any).dispose === 'function') {
+        await (currentVfs as any).dispose()
+        appendTrace(`await currentVfs.dispose()`)
+      }
+      appendOutput(`[${prefix}]VirtualFS を閉じました`)
+    } catch (e) {
+      appendOutput(`[${prefix}]既存 VirtualFS のクリーンアップで例外: ${String(e)}`)
+    } finally {
+      currentVfs = null
+
+    }
   }
 
   connectBtn.addEventListener('click', async () => {
@@ -296,39 +319,9 @@ async function main() {
   connectOpfsBtn.addEventListener('click', () => {
     ; (async () => {
       try {
-        if (!lib.VirtualFS) {
-          appendOutput('[connectOpfsBtn]バンドルに VirtualFS が含まれていません')
-          return
-        }
-        if (!lib.OpfsStorage) {
-          appendOutput('[connectOpfsBtn]バンドルに OpfsStorage が含まれていません')
-          return
-        }
         const rootNameInput = (prompt('OPFS のルート名を入力してください（空欄でデフォルト）') || '').trim()
-        const backend = rootNameInput ? new lib.OpfsStorage(rootNameInput) : new lib.OpfsStorage()
-        appendTrace(`const backend = new lib.OpfsStorage(${JSON.stringify(rootNameInput)})`)
-        const vfs = new lib.VirtualFS({ backend })
-        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
-        if (currentVfs) {
-          appendOutput('[connectOpfsBtn]既存の VirtualFS を新しいものに切り替えます')
-          try {
-            if (typeof (currentVfs as any).close === 'function') await (currentVfs as any).close()
-            else if (typeof (currentVfs as any).dispose === 'function') await (currentVfs as any).dispose()
-          } catch (e) {
-            appendOutput('[connectOpfsBtn]既存 VirtualFS のクリーンアップで例外: ' + String(e))
-          }
-        }
-        currentVfs = vfs
-        appendOutput('[connectOpfsBtn]VirtualFS を作成し OpfsStorage を接続しました' + (rootNameInput ? ` (root=${rootNameInput})` : ''))
-        try {
-          await vfs.init()
-        appendTrace(`await currentVfs.init()`)
-          appendOutput('[connectOpfsBtn]VirtualFS.init() 実行 (OpfsStorage)')
-        } catch (e) {
-          appendOutput('[connectOpfsBtn]VirtualFS.init()/IO で例外: ' + String(e))
-        }
-        // 接続後に OPFS の availableRoots を再取得して UI を更新
-        if (typeof opfsRootsBtn !== 'undefined' && opfsRootsBtn) opfsRootsBtn.click()
+        await connectVfsBackend('connectOpfsBtn', lib.OpfsStorage, rootNameInput, 'OpfsStorage', 'root')
+        if (opfsRootsBtn) opfsRootsBtn.click()
       } catch (e) {
         appendOutput('[connectOpfsBtn]OpfsStorage 接続で例外: ' + String(e))
       }
@@ -339,41 +332,9 @@ async function main() {
   connectIndexedDbBtn.addEventListener('click', () => {
     ; (async () => {
       try {
-        if (!lib.VirtualFS) {
-          appendOutput('[connectIndexedDbBtn]バンドルに VirtualFS が含まれていません')
-          return
-        }
-        if (!lib.IndexedDatabaseStorage) {
-          appendOutput('[connectIndexedDbBtn]バンドルに IndexedDatabaseStorage が含まれていません')
-          return
-        }
         const dbNameInput = (prompt('IndexedDB の DB 名を入力してください（空欄でデフォルト）') || '').trim()
-        const backend = dbNameInput ? new lib.IndexedDatabaseStorage(dbNameInput) : new lib.IndexedDatabaseStorage()
-        appendTrace(`const backend = new lib.IndexedDatabaseStorage(${JSON.stringify(dbNameInput)})`)
-        const vfs = new lib.VirtualFS({ backend })
-        appendTrace(`const vfs = new lib.VirtualFS({ backend })`)
-        if (currentVfs) {
-          appendOutput('[connectIndexedDbBtn]既存の VirtualFS を新しいものに切り替えます')
-          try {
-            if (typeof (currentVfs as any).close === 'function') await (currentVfs as any).close()
-            else if (typeof (currentVfs as any).dispose === 'function') await (currentVfs as any).dispose()
-          } catch (e) {
-            appendOutput('[connectIndexedDbBtn]既存 VirtualFS のクリーンアップで例外: ' + String(e))
-          }
-        }
-        currentVfs = vfs
-        appendOutput('[connectIndexedDbBtn]VirtualFS を作成し IndexedDatabaseStorage を接続しました' + (dbNameInput ? ` (db=${dbNameInput})` : ''))
-        try {
-          await vfs.init()
-        appendTrace(`await currentVfs.init()`)
-          appendOutput('[connectIndexedDbBtn]VirtualFS.init() 実行 (IndexedDatabaseStorage)')
-        } catch (e) {
-          appendOutput('[connectIndexedDbBtn]VirtualFS.init()/IO で例外: ' + String(e))
-        }
-        // 接続後に IndexedDB の availableRoots を再取得して UI を更新
-        // DBの永続化完了を待つため、少し遅延させる
-        await new Promise(resolve => setTimeout(resolve, 100))
-        if (typeof indexedDbRootsBtn !== 'undefined' && indexedDbRootsBtn) indexedDbRootsBtn.click()
+        await connectVfsBackend('connectIndexedDbBtn', lib.IndexedDatabaseStorage, dbNameInput, 'IndexedDatabaseStorage', 'db')
+        if (indexedDbRootsBtn) indexedDbRootsBtn.click()
       } catch (e) {
         appendOutput('[connectIndexedDbBtn]IndexedDatabaseStorage 接続で例外: ' + String(e))
       }
@@ -384,39 +345,9 @@ async function main() {
   connectInMemoryBtn.addEventListener('click', () => {
     ; (async () => {
       try {
-        if (!lib.VirtualFS) {
-          appendOutput('[connectInMemoryBtn]バンドルに VirtualFS が含まれていません')
-          return
-        }
-        if (!lib.InMemoryStorage) {
-          appendOutput('[connectInMemoryBtn]バンドルに InMemoryStorage が含まれていません')
-          return
-        }
         const rootNameInput = (prompt('InMemory のルート名を入力してください（空欄でデフォルト）') || '').trim()
-        const backend = rootNameInput ? new lib.InMemoryStorage(rootNameInput) : new lib.InMemoryStorage()
-        appendTrace(`const backend = new lib.InMemoryStorage(${JSON.stringify(rootNameInput)})`)
-        const vfs = new lib.VirtualFS({ backend })
-        appendTrace(`const currentVfs = new lib.VirtualFS({ backend })`)
-        if (currentVfs) {
-          appendOutput('[connectInMemoryBtn]既存の VirtualFS を新しいものに切り替えます')
-          try {
-            if (typeof (currentVfs as any).close === 'function') await (currentVfs as any).close()
-            else if (typeof (currentVfs as any).dispose === 'function') await (currentVfs as any).dispose()
-          } catch (e) {
-            appendOutput('[connectInMemoryBtn]既存 VirtualFS のクリーンアップで例外: ' + String(e))
-          }
-        }
-        currentVfs = vfs
-        appendOutput('[connectInMemoryBtn]VirtualFS を作成し InMemoryStorage を接続しました' + (rootNameInput ? ` (root=${rootNameInput})` : ''))
-        try {
-          await vfs.init()
-        appendTrace(`await currentVfs.init()`)
-          appendOutput('[connectInMemoryBtn]VirtualFS.init() 実行 (InMemoryStorage)')
-        } catch (e) {
-          appendOutput('[connectInMemoryBtn]VirtualFS.init()/IO で例外: ' + String(e))
-        }
-        // 接続後に InMemory の availableRoots を再取得して UI を更新
-        if (typeof inMemoryRootsBtn !== 'undefined' && inMemoryRootsBtn) inMemoryRootsBtn.click()
+        await connectVfsBackend('connectInMemoryBtn', lib.InMemoryStorage, rootNameInput, 'InMemoryStorage', 'root')
+        if (inMemoryRootsBtn) inMemoryRootsBtn.click()
       } catch (e) {
         appendOutput('[connectInMemoryBtn]InMemoryStorage 接続で例外: ' + String(e))
       }
@@ -565,7 +496,10 @@ async function main() {
       appendTrace(`const backend = new lib.${displayName}(${JSON.stringify(val)})`)
       const vfs = new (lib.VirtualFS as any)({ backend })
       appendTrace(`const currentVfs = new lib.VirtualFS({ backend })`)
-      if (currentVfs) appendOutput(`[${prefix}]既存の VirtualFS を新しいものに切り替えます`)
+      if (currentVfs) {
+        // 既存の VirtualFS があれば共通のクローズ処理を呼ぶ
+        await closeCurrentVfs(prefix)
+      }
       currentVfs = vfs
       appendOutput(`[${prefix}]VirtualFS を作成し ${displayName} を接続しました (${suffixLabel}=${val})`)
       try {
@@ -715,16 +649,35 @@ async function main() {
     }
   })
 
+  // InMemory / IndexedDB / OPFS を閉じる（現在接続されている VirtualFS をクリーンアップ）
+  const closeOpfsBtn = el('closeOpfs') as HTMLButtonElement | null
+  if (closeOpfsBtn) {
+    closeOpfsBtn.addEventListener('click', async () => {
+      await closeCurrentVfs('closeOpfsBtn')
+    })
+  }
+
+  const closeIndexedDbBtn = el('closeIndexedDb') as HTMLButtonElement | null
+  if (closeIndexedDbBtn) {
+    closeIndexedDbBtn.addEventListener('click', async () => {
+      await closeCurrentVfs('closeIndexedDbBtn')
+    })
+  }
+
+  const closeInMemoryBtn = el('closeInMemory') as HTMLButtonElement | null
+  if (closeInMemoryBtn) {
+    closeInMemoryBtn.addEventListener('click', async () => {
+      await closeCurrentVfs('closeInMemoryBtn')
+    })
+  }
+
   // 初期表示で自動的に各 Storage の availableRoots を取得して表示する
   // 要素が存在すれば click() でハンドラを起動
   if (opfsRootsBtn) opfsRootsBtn.click()
   if (indexedDbRootsBtn) indexedDbRootsBtn.click()
   if (inMemoryRootsBtn) inMemoryRootsBtn.click()
 
-  const listAdaptersBtn = el('listAdapters') as HTMLButtonElement
-  listAdaptersBtn.addEventListener('click', () => {
-    appendOutput('[listAdaptersBtn]バンドルに含まれるエクスポート: ' + Object.keys(lib ?? {}).join(', '))
-  })
+
 
   // スナップショット取得はアダプタ実装の fetchSnapshot() を使います。
 
@@ -860,8 +813,9 @@ async function main() {
     if (!path) return
     const content = prompt('ファイル内容を入力してください', 'hello') || ''
     try {
+      appendTrace(`await currentVfs.writeFile(${path}, ${content})`)
       await currentVfs.writeFile(path, content)
-      appendOutput(`[addLocalFileBtn]ローカルにファイルを追加しました: ${path}`)
+      appendOutput(`[addLocalFileBtn]ローカルにファイルを追加しました: ${path}, ${content}`)
     } catch (e) { appendOutput('[addLocalFileBtn]addLocalFile 失敗: ' + String(e)) }
   })
 
@@ -900,7 +854,7 @@ async function main() {
   // --- Edit / Delete / Rename existing file and push to remote ---
   const editAndPushBtn = el('editAndPush') as HTMLButtonElement
   editAndPushBtn.addEventListener('click', async () => {
-    appendOutput('[editAndPushBtn]既存ファイルの編集 & push を開始します...')
+    appendOutput('[editAndPushBtn]既存ファイルの編集を開始します...')
     if (!currentVfs) { appendOutput('[editAndPushBtn]先に VirtualFS を初期化してください'); return }
     if (!(await getCurrentAdapter())) { appendOutput('[editAndPushBtn]先にアダプタを接続してください'); return }
     try {
@@ -922,7 +876,7 @@ async function main() {
 
   const deleteAndPushBtn = el('deleteAndPush') as HTMLButtonElement
   deleteAndPushBtn.addEventListener('click', async () => {
-    appendOutput('[deleteAndPushBtn]既存ファイルの削除 & push を開始します...')
+    appendOutput('[deleteAndPushBtn]既存ファイルの削除を開始します...')
     if (!currentVfs) { appendOutput('[deleteAndPushBtn]先に VirtualFS を初期化してください'); return }
     if (!(await getCurrentAdapter())) { appendOutput('[deleteAndPushBtn]先にアダプタを接続してください'); return }
     try {
