@@ -295,7 +295,12 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
   private _readInMemoryBlobWithSegment(store: any, filepath: string, seg: string): string | null {
     const branch = this.currentBranch || 'main'
     // Normalize info-git to info
-    if (seg === SEG_INFO_GIT) seg = 'info'
+    if (seg === SEG_INFO_GIT) {
+      // explicit git-scoped info: prefer branch-prefixed entry
+      const key = `${branch}${BRANCH_SEP}${filepath}`
+      if (store.infoBlobs.has(key)) return store.infoBlobs.get(key)!
+      return null
+    }
     if (seg === SEG_INFO_WORKSPACE) return store.infoBlobs.has(filepath) ? store.infoBlobs.get(filepath)! : null
 
     const segmentToStore = {

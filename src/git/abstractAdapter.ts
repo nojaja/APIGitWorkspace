@@ -43,8 +43,18 @@ export function classifyStatus(status: number): boolean {
  */
 export function getDelayForResponse(response: Response | null, index: number, baseDelay: number): number {
   if (!response) return baseDelay * Math.pow(2, index) + Math.random() * 100
-  const retryAfter = response.headers.get('Retry-After')
-  return retryAfter ? Number(retryAfter) * 1000 : baseDelay * Math.pow(2, index) + Math.random() * 100
+  try {
+    const hdrs: any = (response as any).headers
+    let retryAfter
+    if (hdrs && typeof hdrs.get === 'function') {
+      retryAfter = hdrs.get('Retry-After') || hdrs.get('retry-after')
+    } else if (hdrs && typeof hdrs['Retry-After'] !== 'undefined') {
+      retryAfter = hdrs['Retry-After'] || hdrs['retry-after']
+    }
+    return retryAfter ? Number(retryAfter) * 1000 : baseDelay * Math.pow(2, index) + Math.random() * 100
+  } catch (e) {
+    return baseDelay * Math.pow(2, index) + Math.random() * 100
+  }
 }
 
 /**
@@ -58,10 +68,10 @@ export async function processResponseWithDelay(response: Response, index: number
   if (response.ok) return response
   if (classifyStatus(response.status)) {
     await new Promise((r) => setTimeout(r, getDelayForResponse(response, index, baseDelay)))
-    throw new Error(`Retryable HTTP ${response.status}`)
+    throw new RetryableError(`Retryable HTTP ${response.status}`)
   }
   const txt = await response.text().catch(() => '')
-  throw new Error(`HTTP ${response.status}: ${txt}`)
+  throw new NonRetryableError(`HTTP ${response.status}: ${txt}`)
 }
 
 /**
@@ -83,8 +93,16 @@ export async function fetchWithRetry(input: RequestInfo, init: RequestInit, atte
       await new Promise((r) => setTimeout(r, getDelayForResponse(null, attemptIndex, baseDelay)))
     }
   }
-  throw new Error(`Failed after ${attempts} attempts: ${lastError}`)
+  // If lastError is a known adapter error, rethrow it to preserve semantics
+  if (lastError instanceof RetryableError || lastError instanceof NonRetryableError) throw lastError
+  // For unknown errors, wrap as RetryableError to indicate exhausted retries
+  if (lastError instanceof Error) throw new RetryableError(lastError.message)
+  throw new RetryableError(String(lastError))
 }
+
+// Standard error types for adapters to share
+export class RetryableError extends Error {}
+export class NonRetryableError extends Error {}
 
 /**
  * Map items with limited concurrency

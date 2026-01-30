@@ -89,8 +89,11 @@ export class ChangeTracker {
   private async _changesFromIndexEntries(): Promise<Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }>> {
     const out: Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }> = []
     const infos = await this.backend.listFiles(undefined, 'workspace')
+    // fetch index entries once so we can merge baseSha from index metadata
+    const index = await this.indexManager.getIndex()
+    const indexEntries = (index && index.entries) ? index.entries : {}
     for (const it of infos) {
-      const changesFor = await this._changesForIndexFile(it.path, it.info)
+      const changesFor = await this._changesForIndexFile(it.path, it.info, indexEntries)
       if (changesFor.length > 0) out.push(...changesFor)
     }
     return out
@@ -102,12 +105,19 @@ export class ChangeTracker {
    * @param {string|null} infoTxt - インデックスの情報テキスト
    * @returns {Promise<Array>} 変更配列
    */
-  private async _changesForIndexFile(p: string, infoTxt: string | null): Promise<Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }>> {
+  private async _changesForIndexFile(p: string, infoTxt: string | null, indexEntries: Record<string, any> = {}): Promise<Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }>> {
     const out: Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }> = []
     if (!infoTxt) return out
     let entry: any = undefined
     try { entry = JSON.parse(infoTxt) } catch (_) { return out }
     if (!entry) return out
+    // Merge baseSha from index metadata when missing in workspace info
+    const idxEntry = indexEntries[p]
+    if ((!entry.baseSha || entry.baseSha === undefined) && idxEntry && idxEntry.baseSha) {
+      entry.baseSha = idxEntry.baseSha
+      // adjust state: if workspace info marked as 'added' but index indicates a base, treat as modified
+      if (entry.state === 'added') entry.state = 'modified'
+    }
     const blob = await this.backend.readBlob(p, 'workspace')
     return this._changesFromIndexEntry(entry, p, blob)
   }

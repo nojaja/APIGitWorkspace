@@ -87,17 +87,22 @@ export class LocalFileManager {
    */
   async deleteFile(filepath: string): Promise<void> {
     const gitBase = await this.backend.readBlob(filepath, BASE)
-    const wsBase = await this.backend.readBlob(filepath, WORKSPACE)
+    // read existing unprefixed info (workspace-local info) to decide action
+    const existingInfoTxt = await this.backend.readBlob(filepath, INFO)
 
     // remove workspace cache first to avoid accidental deletion of newly written workspace-info
     await this.backend.deleteBlob(filepath, WORKSPACE)
 
     try {
       if (gitBase !== null) {
+        // preserve git-scoped info, but create a workspace tombstone derived from git info
         await this._writeTombstoneFromGit(filepath)
         return
       }
-      if (wsBase !== null) {
+      // If there was an existing workspace-local info entry, persist a workspace tombstone
+      // so the deletion is recorded locally. Otherwise remove info entries entirely so
+      // the entry disappears (covers add-then-delete-before-base case).
+      if (existingInfoTxt !== null) {
         await this._writeWorkspaceTombstone(filepath)
         return
       }

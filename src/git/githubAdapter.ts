@@ -1,5 +1,5 @@
 import { GitAdapter } from './adapter'
-import AbstractGitAdapter, { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf } from './abstractAdapter'
+import AbstractGitAdapter, { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf, RetryableError, NonRetryableError } from './abstractAdapter'
 // Use Web Crypto directly for SHA-1
 
 type GHOptions = {
@@ -8,16 +8,6 @@ type GHOptions = {
   token: string
   host?: string // optional GitHub Enterprise host
 }
-
-/**
- * リトライ可能なエラー。
- */
-export class RetryableError extends Error {}
-
-/**
- * リトライ不可能なエラー。
- */
-export class NonRetryableError extends Error {}
 
 /**
  * 指定ミリ秒だけ sleep するユーティリティ
@@ -254,6 +244,8 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
 }
 // re-export helpers for backward compatibility
 export { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf }
+// re-export error classes for backward compatibility with tests
+export { RetryableError, NonRetryableError } from './abstractAdapter'
 export default GitHubAdapter
 
 // helper moved into class as a private method
