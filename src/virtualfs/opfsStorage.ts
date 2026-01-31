@@ -1,5 +1,5 @@
-import { IndexFile } from './types'
-import { StorageBackend, StorageBackendConstructor } from './storageBackend'
+import { IndexFile } from './types.ts'
+import { StorageBackend, StorageBackendConstructor } from './storageBackend.ts'
 
 const ERR_OPFS_DIR_API = 'OPFS directory API not available'
 const VAR_WORKSPACE = 'workspace'

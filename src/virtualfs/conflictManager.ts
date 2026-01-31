@@ -1,5 +1,5 @@
-import { StorageBackend } from './storageBackend'
-import { IndexManager } from './indexManager'
+import { StorageBackend } from './storageBackend.ts'
+import { IndexManager } from './indexManager.ts'
 
 /**
  *

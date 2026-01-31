@@ -10,10 +10,15 @@ module.exports = {
     '^(\\.{1,2}\/(?:test|src)\/.*)\\.js$': '$1.ts'
   },
   testMatch: [
-    '<rootDir>/test/unit/behavior/**/*.behavior.test.[tj]s?(x)',
-    '<rootDir>/test/unit/design/**/*.design.test.[tj]s?(x)'
+    '<rootDir>/test/unit/behavior/**/*.behavior.test.ts?(x)',
+    '<rootDir>/test/unit/design/**/*.design.test.ts?(x)'
   ],
-  setupFiles: ['<rootDir>/test/setup/indexeddbShim.js'],
+  //setupFiles: ['<rootDir>/test/setup/indexeddbShim.js'],
+  setupFiles: [
+    'fake-indexeddb/auto',
+    '<rootDir>/test/setupIndexedDB.cjs',
+    '<rootDir>/test/setupOpfs.ts'
+  ],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.json', useESM: true }]
   },

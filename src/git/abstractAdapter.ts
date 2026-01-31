@@ -1,6 +1,9 @@
 // Shared abstractions and helpers for Git adapters
 export type FetchWithRetryFunction = (_input: RequestInfo, _init: RequestInit, _attempts?: number, _baseDelay?: number) => Promise<Response>
 
+const RETRY_AFTER_HEADER = 'Retry-After'
+const RETRY_AFTER_HEADER_LOWER = 'retry-after'
+
 /**
  * Simple logger interface for dependency injection.
  * If a caller injects an object matching this interface, the adapter
@@ -47,12 +50,12 @@ export function getDelayForResponse(response: Response | null, index: number, ba
     const hdrs: any = (response as any).headers
     let retryAfter
     if (hdrs && typeof hdrs.get === 'function') {
-      retryAfter = hdrs.get('Retry-After') || hdrs.get('retry-after')
-    } else if (hdrs && typeof hdrs['Retry-After'] !== 'undefined') {
-      retryAfter = hdrs['Retry-After'] || hdrs['retry-after']
+      retryAfter = hdrs.get(RETRY_AFTER_HEADER) || hdrs.get(RETRY_AFTER_HEADER_LOWER)
+    } else if (hdrs && typeof hdrs[RETRY_AFTER_HEADER] !== 'undefined') {
+      retryAfter = hdrs[RETRY_AFTER_HEADER] || hdrs[RETRY_AFTER_HEADER_LOWER]
     }
     return retryAfter ? Number(retryAfter) * 1000 : baseDelay * Math.pow(2, index) + Math.random() * 100
-  } catch (e) {
+  } catch (normalizeError) {
     return baseDelay * Math.pow(2, index) + Math.random() * 100
   }
 }
@@ -101,7 +104,14 @@ export async function fetchWithRetry(input: RequestInfo, init: RequestInit, atte
 }
 
 // Standard error types for adapters to share
+/**
+ * Error indicating the operation is retryable and may succeed on later attempts.
+ */
 export class RetryableError extends Error {}
+
+/**
+ * Error indicating the operation failed in a non-retryable way.
+ */
 export class NonRetryableError extends Error {}
 
 /**
@@ -238,9 +248,6 @@ export abstract class AbstractGitAdapter {
    * @returns Promise resolving to Response
    */
   /**
-   * Format a fetch request into a minimal object suitable for logging.
-   */
-  /**
    * Normalize different header-like shapes into a plain object.
    * @param headerLike headers in Headers, array, or plain object form
    * @returns plain header map
@@ -278,9 +285,6 @@ export abstract class AbstractGitAdapter {
     return { url: requestUrl, method: requestMethod, headers: requestHeaders, bodyPreview, attempts, baseDelay }
   }
 
-  /**
-   * Format a fetch Response into a minimal object suitable for logging.
-   */
   /**
    * Format a fetch Response into a minimal object suitable for logging.
    * @returns formatted response log object

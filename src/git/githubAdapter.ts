@@ -1,5 +1,5 @@
-import { GitAdapter } from './adapter'
-import AbstractGitAdapter, { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf, RetryableError, NonRetryableError } from './abstractAdapter'
+import { GitAdapter } from './adapter.ts'
+import AbstractGitAdapter, { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf, NonRetryableError } from './abstractAdapter.ts'
 // Use Web Crypto directly for SHA-1
 
 type GHOptions = {
@@ -245,7 +245,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
 // re-export helpers for backward compatibility
 export { fetchWithRetry, classifyStatus, getDelayForResponse, processResponseWithDelay, mapWithConcurrency, shaOf }
 // re-export error classes for backward compatibility with tests
-export { RetryableError, NonRetryableError } from './abstractAdapter'
+export { RetryableError, NonRetryableError } from './abstractAdapter.ts'
 export default GitHubAdapter
 
 // helper moved into class as a private method

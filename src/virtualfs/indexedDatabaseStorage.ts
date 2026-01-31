@@ -1,5 +1,5 @@
-import { IndexFile } from './types'
-import { StorageBackend, StorageBackendConstructor, Segment } from './storageBackend'
+import { IndexFile } from './types.ts'
+import { StorageBackend, StorageBackendConstructor, Segment } from './storageBackend.ts'
 
 // BRANCH_SEP removed: branch-prefix handling is explicit in methods
 

@@ -1,4 +1,4 @@
-import { IndexFile } from './types'
+import { IndexFile } from './types.ts'
 
 /**
  * Storage セグメント

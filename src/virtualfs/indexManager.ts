@@ -1,5 +1,5 @@
-import type { StorageBackend } from './storageBackend'
-import { IndexFile } from './types'
+import type { StorageBackend } from './storageBackend.ts'
+import { IndexFile } from './types.ts'
 
 /**
  * インデックス管理クラス

@@ -1,4 +1,4 @@
-import type { StorageBackend } from './storageBackend'
+import type { StorageBackend } from './storageBackend.ts'
 
 /**
  *

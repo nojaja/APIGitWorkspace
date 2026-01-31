@@ -1,5 +1,5 @@
-import { StorageBackend } from './storageBackend'
-import { IndexManager } from './indexManager'
+import { StorageBackend } from './storageBackend.ts'
+import { IndexManager } from './indexManager.ts'
 
 /**
  * 変更追跡を行うユーティリティクラス
@@ -112,9 +112,9 @@ export class ChangeTracker {
     try { entry = JSON.parse(infoTxt) } catch (_) { return out }
     if (!entry) return out
     // Merge baseSha from index metadata when missing in workspace info
-    const idxEntry = indexEntries[p]
-    if ((!entry.baseSha || entry.baseSha === undefined) && idxEntry && idxEntry.baseSha) {
-      entry.baseSha = idxEntry.baseSha
+    const indexEntry = indexEntries[p]
+    if ((!entry.baseSha || entry.baseSha === undefined) && indexEntry && indexEntry.baseSha) {
+      entry.baseSha = indexEntry.baseSha
       // adjust state: if workspace info marked as 'added' but index indicates a base, treat as modified
       if (entry.state === 'added') entry.state = 'modified'
     }

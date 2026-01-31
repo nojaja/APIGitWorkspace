@@ -1,8 +1,8 @@
-import { shaOf, shaOfGitBlob } from './hashUtils'
-import { StorageBackend } from './storageBackend'
-import { IndexManager } from './indexManager'
-import { ConflictManager } from './conflictManager'
-import { LocalChangeApplier } from './localChangeApplier'
+import { shaOf, shaOfGitBlob } from './hashUtils.ts'
+import { StorageBackend } from './storageBackend.ts'
+import { IndexManager } from './indexManager.ts'
+import { ConflictManager } from './conflictManager.ts'
+import { LocalChangeApplier } from './localChangeApplier.ts'
 
 type RemoteSnapshotDescriptor = {
   headSha: string

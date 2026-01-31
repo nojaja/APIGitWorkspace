@@ -1,6 +1,6 @@
-import { IndexFile } from './types'
-import { StorageBackend, StorageBackendConstructor } from './storageBackend'
-import { updateInfoForWrite } from './metadataManager'
+import { IndexFile } from './types.ts'
+import { StorageBackend, StorageBackendConstructor } from './storageBackend.ts'
+import { updateInfoForWrite } from './metadataManager.ts'
 
 const BRANCH_SEP = '::'
 const SEG_WORKSPACE = 'workspace'
@@ -444,6 +444,7 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
         /** Set value: prefer updating an existing unprefixed entry if present;
          * otherwise write into the branch-prefixed key. This preserves the
          * expected read semantics where workspace-local info takes precedence.
+         * @returns {any}
          */
         set: (k: string, v: string) => {
           if (store.infoBlobs.has(k)) return store.infoBlobs.set(k, v)

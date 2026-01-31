@@ -1,16 +1,16 @@
-import { IndexFile } from './types'
-import { StorageBackend } from './storageBackend'
-import { OpfsStorage } from './opfsStorage'
-import { GitHubAdapter } from '../git/githubAdapter'
-import { GitLabAdapter } from '../git/gitlabAdapter'
-import { Logger } from '../git/abstractAdapter'
-import { shaOf, shaOfGitBlob } from './hashUtils'
-import { LocalChangeApplier } from './localChangeApplier'
-import { LocalFileManager } from './localFileManager'
-import { IndexManager } from './indexManager'
-import { ChangeTracker } from './changeTracker'
-import { ConflictManager } from './conflictManager'
-import { RemoteSynchronizer } from './remoteSynchronizer'
+import { IndexFile } from './types.ts'
+import { StorageBackend } from './storageBackend.ts'
+import { OpfsStorage } from './opfsStorage.ts'
+import { GitHubAdapter } from '../git/githubAdapter.ts'
+import { GitLabAdapter } from '../git/gitlabAdapter.ts'
+import { Logger } from '../git/abstractAdapter.ts'
+import { shaOf, shaOfGitBlob } from './hashUtils.ts'
+import { LocalChangeApplier } from './localChangeApplier.ts'
+import { LocalFileManager } from './localFileManager.ts'
+import { IndexManager } from './indexManager.ts'
+import { ChangeTracker } from './changeTracker.ts'
+import { ConflictManager } from './conflictManager.ts'
+import { RemoteSynchronizer } from './remoteSynchronizer.ts'
 
 type RemoteSnapshotDescriptor = {
   headSha: string
@@ -622,7 +622,7 @@ export class VirtualFS {
    * @param {import('./types').CommitInput} input コミット入力
    * @returns {Promise<{commitSha:string}>}
    */
-  async push(input: import('./types').CommitInput) {
+  async push(input: import('./types.ts').CommitInput) {
     // generate commitKey for idempotency if not provided (must be set for adapter flows)
     if (!input.commitKey) {
       input.commitKey = await this.shaOf((input.parentSha || '') + JSON.stringify(input.changes))

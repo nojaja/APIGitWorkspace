@@ -1,5 +1,5 @@
-import { GitAdapter } from './adapter'
-import AbstractGitAdapter, { mapWithConcurrency } from './abstractAdapter'
+import { GitAdapter } from './adapter.ts'
+import AbstractGitAdapter, { mapWithConcurrency } from './abstractAdapter.ts'
 // Use Web Crypto directly for SHA-1
 
 type GLOptions = { projectId: string; token: string; host?: string }
