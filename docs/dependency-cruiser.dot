@@ -9,14 +9,34 @@ strict digraph "dependency-cruiser output"{
     subgraph "cluster_src" {label="src" "src/index.ts" [label=<index.ts> tooltip="index.ts" URL="src/index.ts" fillcolor="#ddfeff"] }
     "src/index.ts" -> "src/git/githubAdapter.ts" [arrowhead="inv"]
     "src/index.ts" -> "src/git/gitlabAdapter.ts" [arrowhead="inv"]
-    "src/index.ts" -> "src/virtualfs/indexedDbStorage.ts" [arrowhead="inv"]
+    "src/index.ts" -> "src/virtualfs/indexedDatabaseStorage.ts" [arrowhead="inv"]
+    "src/index.ts" -> "src/virtualfs/inmemoryStorage.ts" [arrowhead="inv"]
     "src/index.ts" -> "src/virtualfs/opfsStorage.ts" [arrowhead="inv"]
     "src/index.ts" -> "src/virtualfs/virtualfs.ts" [arrowhead="inv"]
-    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/indexedDbStorage.ts" [label=<indexedDbStorage.ts> tooltip="indexedDbStorage.ts" URL="src/virtualfs/indexedDbStorage.ts" fillcolor="#ddfeff"] } }
-    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/inmemoryStorage.ts" [label=<inmemoryStorage.ts> tooltip="inmemoryStorage.ts" URL="src/virtualfs/inmemoryStorage.ts" fillcolor="#ccffcc"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/changeTracker.ts" [label=<changeTracker.ts> tooltip="changeTracker.ts" URL="src/virtualfs/changeTracker.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/conflictManager.ts" [label=<conflictManager.ts> tooltip="conflictManager.ts" URL="src/virtualfs/conflictManager.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/hashUtils.ts" [label=<hashUtils.ts> tooltip="hashUtils.ts" URL="src/virtualfs/hashUtils.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/indexManager.ts" [label=<indexManager.ts> tooltip="indexManager.ts" URL="src/virtualfs/indexManager.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/indexedDatabaseStorage.ts" [label=<indexedDatabaseStorage.ts> tooltip="indexedDatabaseStorage.ts" URL="src/virtualfs/indexedDatabaseStorage.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/inmemoryStorage.ts" [label=<inmemoryStorage.ts> tooltip="inmemoryStorage.ts" URL="src/virtualfs/inmemoryStorage.ts" fillcolor="#ddfeff"] } }
+    "src/virtualfs/inmemoryStorage.ts" -> "src/virtualfs/metadataManager.ts"
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/localChangeApplier.ts" [label=<localChangeApplier.ts> tooltip="localChangeApplier.ts" URL="src/virtualfs/localChangeApplier.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/localFileManager.ts" [label=<localFileManager.ts> tooltip="localFileManager.ts" URL="src/virtualfs/localFileManager.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/metadataManager.ts" [label=<metadataManager.ts> tooltip="metadataManager.ts" URL="src/virtualfs/metadataManager.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/opfsStorage.ts" [label=<opfsStorage.ts> tooltip="opfsStorage.ts" URL="src/virtualfs/opfsStorage.ts" fillcolor="#ddfeff"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/remoteSynchronizer.ts" [label=<remoteSynchronizer.ts> tooltip="remoteSynchronizer.ts" URL="src/virtualfs/remoteSynchronizer.ts" fillcolor="#ddfeff"] } }
+    "src/virtualfs/remoteSynchronizer.ts" -> "src/virtualfs/hashUtils.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/storageBackend.ts" [label=<storageBackend.ts> tooltip="storageBackend.ts" URL="src/virtualfs/storageBackend.ts" fillcolor="#ccffcc"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/types.ts" [label=<types.ts> tooltip="types.ts" URL="src/virtualfs/types.ts" fillcolor="#ccffcc"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/virtualfs" {label="virtualfs" "src/virtualfs/virtualfs.ts" [label=<virtualfs.ts> tooltip="virtualfs.ts" URL="src/virtualfs/virtualfs.ts" fillcolor="#ddfeff"] } }
+    "src/virtualfs/virtualfs.ts" -> "src/git/githubAdapter.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/git/gitlabAdapter.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/changeTracker.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/conflictManager.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/hashUtils.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/indexManager.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/localChangeApplier.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/localFileManager.ts"
     "src/virtualfs/virtualfs.ts" -> "src/virtualfs/opfsStorage.ts"
+    "src/virtualfs/virtualfs.ts" -> "src/virtualfs/remoteSynchronizer.ts"
 }
