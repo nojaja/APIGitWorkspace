@@ -1,4 +1,4 @@
-import type { StorageBackend } from './storageBackend.ts'
+﻿import type { StorageBackend } from './storageBackend.ts'
 
 const WORKSPACE = 'workspace'
 const BASE = 'base'
@@ -41,7 +41,7 @@ export class LocalFileManager {
     if (gitInfoTxt) {
       try {
         gitInfo = JSON.parse(gitInfoTxt)
-      } catch (_error) {
+      } catch {
         gitInfo = {}
       }
     }
@@ -61,7 +61,7 @@ export class LocalFileManager {
     if (existingWorkspaceInfoTxt) {
       try {
         existingWorkspaceInfo = JSON.parse(existingWorkspaceInfoTxt)
-      } catch (_error) {
+      } catch {
         existingWorkspaceInfo = {}
       }
     }
@@ -107,7 +107,7 @@ export class LocalFileManager {
         return
       }
       await this._deleteInfos(filepath)
-    } catch (_error) {
+    } catch {
       // best-effort: ignore and finish
     }
   }
@@ -140,3 +140,4 @@ export class LocalFileManager {
 }
 
 export default LocalFileManager
+

@@ -43,8 +43,21 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
    */
   // shaOf is inherited from AbstractGitAdapter
 
+  /**
+   * ブロブを作成またはキャッシュから取得します。
+   * @param {any[]} changes 変更一覧（create/update を含む）
+   * @param {number} [concurrency=5] 同時実行数
+   * @returns {Promise<Record<string,string>>} パス→blobSha のマップ
+   */
   async createBlobs(changes: any[], concurrency = 5) {
     const tasks = changes.filter((c) => c.type === 'create' || c.type === 'update')
+    // mapper: create or reuse blob for a change
+    // 内部ヘルパー
+    /**
+     * ブロブ作成用のマッパー
+     * @param {any} ch 変更エントリ
+     * @returns {Promise<{path:string,sha:string}>}
+     */
     const mapper = async (ch: any) => {
       const contentHash = await this.shaOf(ch.content || '')
       const cached = this.blobCache.get(contentHash)
@@ -124,6 +137,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
   /**
    * 指定コミットの tree SHA を取得します。
    * @param commitSha コミット SHA
+    * @returns {Promise<string>} tree の SHA
    */
   async getCommitTreeSha(commitSha: string) {
     const response = await this._fetchWithRetry(`${this.baseUrl}/git/commits/${commitSha}`, { method: 'GET', headers: this.headers }, 4, 300)
@@ -135,6 +149,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
   /**
    * 指定 ref の先頭コミット SHA を取得します。
    * @param ref 例: `heads/main`
+    * @returns {Promise<string>} 参照先のコミット SHA
    */
   async getRef(reference: string) {
     const response = await this._fetchWithRetry(`${this.baseUrl}/git/ref/${reference}`, { method: 'GET', headers: this.headers }, 4, 300)
@@ -147,6 +162,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
    * tree を取得します（必要なら再帰取得）。
    * @param treeSha tree の SHA
    * @param recursive 再帰フラグ
+    * @returns {Promise<any[]>} tree の配列
    */
   async getTree(treeSha: string, recursive = false) {
     const url = `${this.baseUrl}/git/trees/${treeSha}` + (recursive ? '?recursive=1' : '')
@@ -159,6 +175,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
   /**
    * blob を取得してデコードして返します。
    * @param blobSha blob の SHA
+    * @returns {Promise<{content:string,encoding:string}>} デコード済みコンテンツとエンコーディング
    */
   async getBlob(blobSha: string) {
     const response = await this._fetchWithRetry(`${this.baseUrl}/git/blobs/${blobSha}`, { method: 'GET', headers: this.headers }, 4, 300)
@@ -192,6 +209,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
   /**
    * リポジトリのスナップショットを取得します。
    * @param {string} branch ブランチ名 (default: 'main')
+    * @returns {Promise<{headSha:string,shas:Record<string,string>,fetchContent:Function,snapshot:Record<string,string>}>}
    */
   async fetchSnapshot(branch = 'main', concurrency = 5) {
     const referenceResponse = await this._fetchWithRetry(`${this.baseUrl}/git/refs/heads/${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers }, 4, 300)
@@ -211,8 +229,12 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
 
     const contentCache = new Map<string, string>()
     const snapshot: Record<string, string> = {}
+    // Fetch content wrapper that delegates to private helper.
+    // 内部ラッパー
     /**
-     * Fetch content wrapper that delegates to private helper.
+     * 指定パス配列から内容を取得するラッパー
+     * @param {string[]} paths パス配列
+     * @returns {Promise<Record<string,string>>} パス→内容 マップ
      */
     const fetchContent = (paths: string[]) => this._fetchContentFromMap(fileMap, contentCache, snapshot, paths, concurrency)
 
@@ -221,6 +243,7 @@ export class GitHubAdapter extends AbstractGitAdapter implements GitAdapter {
 
   /**
    * Helper to fetch file contents from a file map with concurrency and caching.
+    * @returns {Promise<Record<string,string>>} パス→内容 マップ
    */
   private async _fetchContentFromMap(fileMap: Map<string, any>, contentCache: Map<string, string>, snapshot: Record<string, string>, paths: string[], concurrency: number) {
     const out: Record<string, string> = {}

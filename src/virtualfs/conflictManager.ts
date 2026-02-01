@@ -50,7 +50,7 @@ export class ConflictManager {
 
       try {
         await this.backend.deleteBlob(filepath, 'conflict')
-      } catch (error) {
+      } catch {
         // ignore
       }
 
@@ -61,12 +61,12 @@ export class ConflictManager {
           this.indexManager.setHead(ie.baseSha)
           await this.indexManager.saveIndex()
         }
-      } catch (error) {
+      } catch {
         // best-effort: ignore errors when updating head
       }
       await this.indexManager.loadIndex()
       return true
-    } catch (error) {
+    } catch {
       return false
     }
   }
@@ -97,7 +97,7 @@ export class ConflictManager {
     if (typeof content === 'undefined') return
     try {
       await this.backend.writeBlob(p, content, 'conflict')
-    } catch (error) {
+    } catch {
       return
     }
   }

@@ -1,4 +1,4 @@
-import { IndexFile } from './types.ts'
+﻿import { IndexFile } from './types.ts'
 import { StorageBackend, StorageBackendConstructor, Segment } from './storageBackend.ts'
 
 // BRANCH_SEP removed: branch-prefix handling is explicit in methods
@@ -14,7 +14,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
   static canUse(): boolean {
     try {
       return !!(globalThis as any).indexedDB
-    } catch (_error) {
+    } catch {
       return false
     }
   }
@@ -47,7 +47,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
     // Delegate the actual retrieval to a helper to keep cognitive complexity low
     try {
       return await IndexedDatabaseStorage._namesFromDatabases(idb)
-    } catch (error) {
+    } catch {
       return []
     }
   }
@@ -347,7 +347,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
     // set current branch from persisted adapter metadata so we only load info for that branch
     try {
       this.currentBranch = (meta as any).adapter && (meta as any).adapter.opts && (meta as any).adapter.opts.branch ? (meta as any).adapter.opts.branch : null
-    } catch (_error) {
+    } catch {
       this.currentBranch = null
     }
   }
@@ -370,7 +370,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
         if (!txt) continue
         this._tryParseAssign(result, k, txt)
       }
-    } catch (_error) {
+    } catch {
       // ignore failures and continue
     }
   }
@@ -399,7 +399,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
   private _tryParseAssign(result: IndexFile, key: string, txt: string): void {
     try {
       result.entries[key] = JSON.parse(txt)
-    } catch (_) {
+    } catch {
       // ignore parse errors
     }
   }
@@ -419,7 +419,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
         request.onsuccess = () => { resolve(request.result ?? null) }
         /** Error handler for index get. @returns {void} */
         request.onerror = () => { resolve(null) }
-      } catch (_) { resolve(null) }
+      } catch { resolve(null) }
     })
   }
 
@@ -707,7 +707,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
          * @returns {void}
          */
         request.onerror = function () { resolve(null) }
-      } catch (_) { resolve(null) }
+      } catch { resolve(null) }
     })
   }
 
@@ -727,7 +727,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
         request.onsuccess = this._makeCursorSuccessHandler(resolve, keys)
         /** Cursor error handler */
         request.onerror = function () { resolve(keys) }
-      } catch (_error) { resolve([]) }
+      } catch { resolve([]) }
     })
   }
 
@@ -746,7 +746,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
         request.onsuccess = () => { resolve(request.result ?? null) }
         /** Error handler for branch-prefixed get. @returns {void} */
         request.onerror = () => { resolve(null) }
-      } catch (_error) { resolve(null) }
+      } catch { resolve(null) }
     })
   }
 
@@ -784,7 +784,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
     let keys: string[]
     try {
       keys = await this._listKeysFromStore(storeName)
-    } catch (_error) {
+    } catch {
       keys = []
     }
 
@@ -822,7 +822,7 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
       let keys: string[] = []
       try {
         keys = await this._listKeysFromStore(storeName)
-      } catch (error) {
+      } catch {
         keys = []
       }
 
@@ -1015,3 +1015,4 @@ export const IndexedDatabaseStorage: StorageBackendConstructor = class IndexedDa
 }
 
 export default IndexedDatabaseStorage
+

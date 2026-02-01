@@ -160,7 +160,7 @@ export class GitLabAdapter extends AbstractGitAdapter implements GitAdapter {
     let index: any = null
     try {
       index = text ? JSON.parse(text) : null
-    } catch (error) {
+    } catch {
       throw new Error(`GitLab commit invalid JSON response: ${text}`)
     }
     if (!index || (!index.id && !index.commit)) {
@@ -238,8 +238,8 @@ export class GitLabAdapter extends AbstractGitAdapter implements GitAdapter {
     try {
       await this.verifyParent(expectedParentSha, branch)
     } catch (error: any) {
-      if (error && String(error).includes('422')) throw error
-      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('verifyParent skipped:', error)
+      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('verifyParent skipped:')
+      throw error
     }
   }
 
@@ -278,8 +278,8 @@ export class GitLabAdapter extends AbstractGitAdapter implements GitAdapter {
       const commit = branchJson?.commit
       const remoteHead = commit?.id ?? commit?.sha
       return remoteHead ?? branch
-    } catch (error) {
-      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('determineHeadSha fallback', error)
+    } catch {
+      if (typeof console !== 'undefined' && (console as any).warn) (console as any).warn('determineHeadSha fallback')
     }
     return branch
   }
@@ -336,12 +336,12 @@ export class GitLabAdapter extends AbstractGitAdapter implements GitAdapter {
     try {
       const rawResponse = await this.fetchWithRetry(`${this.baseUrl}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(branch)}`, { method: 'GET', headers: this.headers })
       if (!rawResponse.ok) {
-        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', path, rawResponse.status)
+          if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file failed', path)
         return null
       }
       return await rawResponse.text()
-    } catch (error) {
-      if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', path, error)
+    } catch {
+        if (typeof console !== 'undefined' && (console as any).debug) (console as any).debug('fetchSnapshot file error', path)
       return null
     }
   }

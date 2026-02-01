@@ -1,4 +1,4 @@
-import { IndexFile } from './types.ts'
+﻿import { IndexFile } from './types.ts'
 import { StorageBackend, StorageBackendConstructor } from './storageBackend.ts'
 
 const ERR_OPFS_DIR_API = 'OPFS directory API not available'
@@ -42,7 +42,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const root = await OpfsStorage._getNavigatorStorageRoot()
       if (!root) return []
       return await OpfsStorage._collectDirectoryNames(root)
-    } catch (_error) {
+    } catch {
       return []
     }
   }
@@ -174,7 +174,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const maybe = nav.storage.getDirectory()
       const d = await Promise.resolve(maybe)
       return d || null
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -190,7 +190,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     }
     try {
       return await opfs.getDirectory()
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -243,7 +243,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const fh = await (root as any).getFileHandle('index')
       const file = await fh.getFile()
       return await file.text()
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -271,7 +271,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       await this._readInfoEntries(root, result)
 
       return result
-    } catch (_error) {
+    } catch {
       return { head: '', entries: {} }
     }
   }
@@ -303,7 +303,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       if (!txt) continue
       try {
         result.entries[fp] = JSON.parse(txt) as any
-      } catch (_error) {
+      } catch {
         continue
       }
     }
@@ -421,7 +421,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       }
       const existingTxt = await this.readFromPrefix(root, this._segmentToPrefix('info'), filepath).catch(() => null)
       return existingTxt ? JSON.parse(existingTxt) : {}
-    } catch (_error) {
+    } catch {
       return {}
     }
   }
@@ -486,7 +486,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const file = await fh.getFile()
       const txt = await file.text()
       return txt ?? null
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -539,7 +539,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       }
       const prefix = this._segmentToPrefix(segment)
       return await this.readFromPrefix(root, prefix, filepath)
-    } catch (error) {
+    } catch {
       return null
     }
   }
@@ -602,14 +602,14 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
     // ディレクトリが存在しない場合（NotFound）は削除対象なしとして終了
     try {
       directory = await this.traverseDir(root, parts.slice(0, parts.length - 1))
-    } catch (_error) {
+    } catch {
       return
     }
     const name = parts[parts.length - 1]
     if (typeof directory.removeEntry === 'function') {
       try {
         await directory.removeEntry(name)
-      } catch (_error) {
+      } catch {
         // removeEntryが失敗しても無視（存在しない等）
       }
       return
@@ -635,7 +635,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const directory = await this.traverseDir(root, parts.slice(0, parts.length - 1))
       const fh = await directory.getFileHandle(parts[parts.length - 1])
       return await this._readFileFromHandle(fh)
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -673,7 +673,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const results: string[] = []
       await this._recurseListDir(directory, '', results)
       return results
-    } catch (_error) {
+    } catch {
       return []
     }
   }
@@ -689,8 +689,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         await this._processEntryPair(pair, base, results)
       }
       return
-    } catch (error) {
-      await this._recurseListDirFallback(d, base, results)
+    } catch {
       return
     }
   }
@@ -729,7 +728,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       try {
         const fh = await d.getFileHandle(name)
         if (fh) { results.push(childPath); return }
-      } catch (error) {
+      } catch {
         return
       }
     }
@@ -737,7 +736,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       try {
         const childDirectory = await d.getDirectoryHandle(name)
         await this._recurseListDir(childDirectory, childPath, results)
-      } catch (error) {
+      } catch {
         return
       }
     }
@@ -827,7 +826,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         if (name === this.rootDir && OpfsStorage._isDirectoryHandle(handle)) return handle
       }
       return null
-    } catch (error) {
+    } catch {
       return null
     }
   }
@@ -841,7 +840,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
       const ws = await this.readFromPrefix(navRoot, `${VAR_WORKSPACE}/info`, key).catch(() => null)
       if (ws !== null) return ws
       return await this.readFromPrefix(navRoot, this._segmentToPrefix('info'), key).catch(() => null)
-    } catch (error) {
+    } catch {
       return null
     }
   }
@@ -874,7 +873,7 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
         return true
       }
       return false
-    } catch (error) {
+    } catch {
       // getFileHandle/remove が例外を投げた場合は削除できなかったと扱う
       return false
     }
@@ -902,3 +901,4 @@ export const OpfsStorage: StorageBackendConstructor = class OpfsStorage implemen
 }
 
 export default OpfsStorage
+

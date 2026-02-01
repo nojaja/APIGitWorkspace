@@ -1,4 +1,4 @@
-import { IndexFile } from './types.ts'
+﻿import { IndexFile } from './types.ts'
 import { StorageBackend, StorageBackendConstructor } from './storageBackend.ts'
 import { updateInfoForWrite } from './metadataManager.ts'
 
@@ -105,7 +105,7 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
       try {
         const parsed = JSON.parse(v)
         result.entries[k] = parsed
-      } catch (_error) { continue }
+      } catch { continue }
     }
   }
 
@@ -122,7 +122,7 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
         const parsed = JSON.parse(v)
         if (parsed && parsed.state === 'deleted') continue
         result.entries[filepath] = parsed
-      } catch (_error) { continue }
+      } catch { continue }
     }
   }
 
@@ -191,7 +191,7 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
     const gitInfoTxt = store.infoBlobs.has(gitBaseKey) ? store.infoBlobs.get(gitBaseKey)! : null
     let existing: any = undefined
     if (gitInfoTxt) {
-      try { existing = JSON.parse(gitInfoTxt) } catch (_error) { existing = undefined }
+      try { existing = JSON.parse(gitInfoTxt) } catch { existing = undefined }
     }
     const sha = await this.shaOf(content)
     const now = Date.now()
@@ -514,3 +514,4 @@ export const InMemoryStorage: StorageBackendConstructor = class InMemoryStorage 
 }
 
 export default InMemoryStorage
+

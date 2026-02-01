@@ -1,4 +1,4 @@
-
+﻿
 /* eslint-disable jsdoc/require-jsdoc */
 /**
  * Compute SHA-1 hex digest for a string.
@@ -90,7 +90,7 @@ function parseExistingInfo(store: any, filepath: string): any | undefined {
   if (!existingTxt) return undefined
   try {
     return JSON.parse(existingTxt)
-  } catch (_error) {
+  } catch {
     return undefined
   }
 }
@@ -167,7 +167,7 @@ export async function updateInfoForWrite(store: any, filepath: string, seg: stri
         const parsed = JSON.parse(content)
         store.infoBlobs.set(filepath, JSON.stringify(parsed))
         return
-      } catch (_error) {
+      } catch {
         store.infoBlobs.set(filepath, String(content))
         return
       }
@@ -187,10 +187,11 @@ export async function updateInfoForWrite(store: any, filepath: string, seg: stri
     }
 
     store.infoBlobs.set(filepath, JSON.stringify(entry))
-  } catch (_error) {
+  } catch {
     // best-effort: swallow errors for in-memory metadata updates
     return
   }
 }
 
 export default { updateInfoForWrite }
+
