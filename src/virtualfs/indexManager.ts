@@ -1,4 +1,4 @@
-import type { StorageBackend } from './storageBackend.ts'
+﻿import type { StorageBackend } from './storageBackend.ts'
 import { IndexFile } from './types.ts'
 
 /**
@@ -28,7 +28,7 @@ export class IndexManager {
         this.head = raw.head || ''
         this.lastCommitKey = (raw as any).lastCommitKey
       }
-    } catch (error) {
+    } catch {
       this.head = ''
       this.lastCommitKey = undefined
       await this.saveIndex()
@@ -131,7 +131,7 @@ export class IndexManager {
           const parsed = JSON.parse(it.info)
           if (parsed && parsed.state === 'deleted') continue
         }
-      } catch (_error) {
+      } catch {
         // ignore parse errors and include the path
       }
       out.push(it.path)
@@ -141,3 +141,4 @@ export class IndexManager {
 }
 
 export default IndexManager
+

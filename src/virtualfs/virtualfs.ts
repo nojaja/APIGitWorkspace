@@ -1,4 +1,4 @@
-import { IndexFile } from './types.ts'
+﻿import { IndexFile } from './types.ts'
 import { StorageBackend } from './storageBackend.ts'
 import { OpfsStorage } from './opfsStorage.ts'
 import { GitHubAdapter } from '../git/githubAdapter.ts'
@@ -122,7 +122,7 @@ export class VirtualFS {
     try {
       const index = await this.indexManager.getIndex()
       this.adapterMeta = (index as any).adapter || null
-    } catch (_error) {
+    } catch {
       this.adapterMeta = null
     }
   }
@@ -141,7 +141,7 @@ export class VirtualFS {
       if (this.adapter && this.logger && typeof (this.adapter as any).setLogger === 'function') {
         (this.adapter as any).setLogger(this.logger)
       }
-    } catch (_error) {
+    } catch {
       // best-effort logging injection; ignore failures
     }
     try {
@@ -149,7 +149,7 @@ export class VirtualFS {
       if (this.adapterMeta) (index as any).adapter = this.adapterMeta
       else delete (index as any).adapter
       await this.backend.writeIndex(index)
-    } catch (_error) {
+    } catch {
       // best-effort persistence; ignore failures here
     }
   }
@@ -166,7 +166,7 @@ export class VirtualFS {
       const index = await this.indexManager.getIndex()
       this.adapterMeta = (index as any).adapter || null
       return this.adapterMeta
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -182,7 +182,7 @@ export class VirtualFS {
       try {
         const index = await this.indexManager.getIndex()
         this.adapterMeta = (index as any).adapter || null
-      } catch (_error) {
+      } catch {
         this.adapterMeta = null
       }
     }
@@ -208,7 +208,7 @@ export class VirtualFS {
       if (this.logger) optionsWithLogger.logger = this.logger
       if (type === 'github') return new GitHubAdapter(optionsWithLogger)
       if (type === 'gitlab') return new GitLabAdapter(optionsWithLogger)
-    } catch (_error) {
+    } catch {
       return null
     }
     return null
@@ -332,7 +332,7 @@ export class VirtualFS {
       try {
         const v = (entries as any)[k]
         if (v && v.state === 'deleted') continue
-      } catch (_error) {
+      } catch {
         // ignore and include
       }
       out.push(k)
@@ -396,7 +396,7 @@ export class VirtualFS {
     if (input.parentSha && typeof (adapter as any).getCommitTreeSha === 'function') {
       try {
         baseTreeSha = await (adapter as any).getCommitTreeSha(input.parentSha)
-      } catch (error) {
+      } catch {
         // ignore and proceed without base_tree if fetching fails
         baseTreeSha = undefined
       }
@@ -537,7 +537,7 @@ export class VirtualFS {
     let resolved: RemoteSnapshotDescriptor | string | null = null
     try {
       resolved = await this._resolveDescriptor(remote as any, undefined)
-    } catch (_error) {
+    } catch {
       resolved = null
     }
 
@@ -567,7 +567,7 @@ export class VirtualFS {
     if (typeof resolved !== 'string') return resolved as RemoteSnapshotDescriptor
     try {
       return await this._normalizeRemoteInput(resolved, {})
-    } catch (_error) {
+    } catch {
       return null
     }
   }
@@ -640,3 +640,4 @@ export class VirtualFS {
 }
 
 export default VirtualFS
+

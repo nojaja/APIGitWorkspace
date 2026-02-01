@@ -1,4 +1,4 @@
-import { StorageBackend } from './storageBackend.ts'
+﻿import { StorageBackend } from './storageBackend.ts'
 import { IndexManager } from './indexManager.ts'
 
 /**
@@ -51,7 +51,7 @@ export class ChangeTracker {
           const ie: any = entry as any
           out.push({ type: 'delete', path: p, baseSha: ie.baseSha })
         }
-      } catch (error) {
+      } catch {
         continue
       }
     }
@@ -109,7 +109,7 @@ export class ChangeTracker {
     const out: Array<{ type: 'create'; path: string; content: string } | { type: 'update'; path: string; content: string; baseSha?: string }> = []
     if (!infoTxt) return out
     let entry: any = undefined
-    try { entry = JSON.parse(infoTxt) } catch (_) { return out }
+    try { entry = JSON.parse(infoTxt) } catch { return out }
     if (!entry) return out
     // Merge baseSha from index metadata when missing in workspace info
     const indexEntry = indexEntries[p]
@@ -155,3 +155,4 @@ export class ChangeTracker {
     return entry.state === 'modified' || entry.state === 'conflict' || (!!entry.workspaceSha && entry.state !== 'added')
   }
 }
+

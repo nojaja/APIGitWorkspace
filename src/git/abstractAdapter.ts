@@ -55,7 +55,7 @@ export function getDelayForResponse(response: Response | null, index: number, ba
       retryAfter = hdrs[RETRY_AFTER_HEADER] || hdrs[RETRY_AFTER_HEADER_LOWER]
     }
     return retryAfter ? Number(retryAfter) * 1000 : baseDelay * Math.pow(2, index) + Math.random() * 100
-  } catch (normalizeError) {
+  } catch {
     return baseDelay * Math.pow(2, index) + Math.random() * 100
   }
 }
@@ -191,7 +191,7 @@ export abstract class AbstractGitAdapter {
     if (this.logger && typeof this.logger.debug === 'function') {
       try {
         this.logger.debug(..._messages)
-      } catch (loggingError) {
+      } catch {
         // Logging errors must not affect adapter behavior; ignore safely
       }
     }
@@ -205,7 +205,7 @@ export abstract class AbstractGitAdapter {
     if (this.logger && typeof this.logger.info === 'function') {
       try {
         this.logger.info(..._messages)
-      } catch (loggingError) {
+      } catch {
         // ignore logging failures
       }
     }
@@ -219,7 +219,7 @@ export abstract class AbstractGitAdapter {
     if (this.logger && typeof this.logger.warn === 'function') {
       try {
         this.logger.warn(..._messages)
-      } catch (loggingError) {
+      } catch {
         // ignore logging failures
       }
     }
@@ -233,7 +233,7 @@ export abstract class AbstractGitAdapter {
     if (this.logger && typeof this.logger.error === 'function') {
       try {
         this.logger.error(..._messages)
-      } catch (loggingError) {
+      } catch {
         // ignore logging failures
       }
     }
@@ -267,7 +267,7 @@ export abstract class AbstractGitAdapter {
       if (typeof headerLike === 'object') {
         Object.assign(out, headerLike)
       }
-    } catch (normalizeError) {
+    } catch {
       // ignore normalization errors
     }
     return out
@@ -300,7 +300,7 @@ export abstract class AbstractGitAdapter {
           if (typeof txt === 'string') bodyPreview = txt.slice(0, 500)
         }
       }
-    } catch (bodyReadError) {
+    } catch {
       // ignore body read errors
     }
     return { status: response.status, statusText: response.statusText, headers: respHdrs, bodyPreview }
@@ -319,7 +319,7 @@ export abstract class AbstractGitAdapter {
     try {
       const requestLog = this.formatRequestForLog(input, init, attempts, baseDelay)
       this.logDebug({ fetchRequest: requestLog })
-    } catch (formatError) {
+    } catch {
       // best-effort logging
     }
 
@@ -328,14 +328,14 @@ export abstract class AbstractGitAdapter {
       try {
         const responseLog = await this.formatResponseForLog(response)
         this.logDebug({ fetchResponse: responseLog })
-      } catch (formatError) {
+      } catch {
         // ignore logging failures
       }
       return response
     } catch (fetchError) {
       try {
         this.logDebug({ fetchError: String(fetchError) })
-      } catch (loggingError) {
+      } catch {
         // ignore
       }
       throw fetchError
